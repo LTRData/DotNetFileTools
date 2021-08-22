@@ -17,6 +17,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ExtractExeNetStrings", "Ext
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ReplaceText", "ReplaceText\ReplaceText.csproj", "{73056BFB-753E-4119-BF9F-4E4125CB13EF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PictureOnMap", "PictureOnMap\PictureOnMap.csproj", "{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -77,6 +79,14 @@ Global
 		{73056BFB-753E-4119-BF9F-4E4125CB13EF}.Release|Any CPU.Build.0 = Release|Any CPU
 		{73056BFB-753E-4119-BF9F-4E4125CB13EF}.Release|x86.ActiveCfg = Release|Any CPU
 		{73056BFB-753E-4119-BF9F-4E4125CB13EF}.Release|x86.Build.0 = Release|Any CPU
+		{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}.Debug|x86.Build.0 = Debug|Any CPU
+		{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}.Release|x86.ActiveCfg = Release|Any CPU
+		{E27A06A1-C0D5-4C97-B26E-F34A7C326AC9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
