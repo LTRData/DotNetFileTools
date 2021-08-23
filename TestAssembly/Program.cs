@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 
 namespace TestAssembly
 {
@@ -20,12 +22,12 @@ namespace TestAssembly
             }
             else if (value is string str)
             {
-                return $"'{str}'";
+                return $"'{str.Replace(@"\", @"\\").Replace("'", @"\'")}'";
             }
             else if (field.FieldType.IsEnum &&
                 field.FieldType != field.DeclaringType)
             {
-                return $"{field.FieldType.FormatTypeName()}::{Enum.ToObject(field.FieldType, value)}";
+                return $"({field.FieldType.FormatTypeName()}){Enum.ToObject(field.FieldType, value)}";
             }
             else
             {
@@ -69,6 +71,9 @@ namespace TestAssembly
 
         public static int Main(params string[] args)
         {
+            Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
+            Thread.CurrentThread.CurrentUICulture = CultureInfo.InvariantCulture;
+
             var continueOnFailure = false;
             var searchOption = SearchOption.TopDirectoryOnly;
             var result = 0;
@@ -273,10 +278,13 @@ namespace TestAssembly
                             {
                                 Console.Write("readonly ");
                             }
-                            Console.Write(m.FieldType.FormatTypeName() + " ");
+                            if (!m.IsLiteral || m.FieldType != m.DeclaringType)
+                            {
+                                Console.Write(m.FieldType.FormatTypeName() + " ");
+                            }
                             Console.ForegroundColor = ConsoleColor.Gray;
                             Console.Write(m.Name);
-                            
+
                             if (m.IsLiteral)
                             {
                                 Console.ForegroundColor = ConsoleColor.DarkCyan;
@@ -467,7 +475,7 @@ namespace TestAssembly
                                     .Select((tm, i) => new { tm, im = ifm.InterfaceMethods[i] })
                                     .Where(o => o.tm == m))
                                     .SelectMany(o => o)
-                                    .Select(o => $"{o.im.DeclaringType.FormatTypeName()}::{o.im.Name}")
+                                    .Select(o => $"{o.im.DeclaringType.FormatTypeName()}.{o.im.Name}")
                                     .ToArray();
 
                                 if (ifimpl.Length > 0)
