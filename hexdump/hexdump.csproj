@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>netcoreapp3.1;net35;net40</TargetFrameworks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="LTRLib40">
+      <HintPath>..\..\LTRLib\Release\$(TargetFramework)\LTRLib40.dll</HintPath>
+    </Reference>
+    <Reference Include="LTRLib40.Extended">
+      <HintPath>..\..\LTRLib\Release\$(TargetFramework)\LTRLib40.Extended.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
