@@ -10,30 +10,42 @@ namespace hexdump
 {
     public static class Program
     {
-        public static void DumpStream(TextWriter writer, Stream stream, long? count)
+        public static int BufferSize { get; set; } = 65536;
+
+        public static void DumpStream(TextWriter writer, Stream stream, long offset, long? count)
         {
-            long i = 0;
-            var bytes = new byte[65536];
+            if (offset != 0)
+            {
+                stream.Seek(offset, offset > 0 ? SeekOrigin.Begin : SeekOrigin.End);
+                offset = stream.Position;
+            }
+
+            var bytes = new byte[BufferSize];
+            
             for (; ;)
             {
                 var length = bytes.Length;
                 if (count.HasValue)
                 {
-                    length = (int)Math.Min(length, count.Value - i);
+                    length = (int)Math.Min(length, count.Value);
                 }
                 length = stream.Read(bytes, 0, length);
                 if (length == 0)
                 {
                     break;
                 }
+                if (count.HasValue)
+                {
+                    count -= length;
+                }
                 foreach (var line in bytes.Take(length).FormatHexLines())
                 {
-                    writer.Write(((ushort)(i >> 16)).ToString("X4"));
+                    writer.Write(((ushort)(offset >> 16)).ToString("X4"));
                     writer.Write(' ');
-                    writer.Write(((ushort)i).ToString("X4"));
+                    writer.Write(((ushort)offset).ToString("X4"));
                     writer.Write("  ");
                     writer.WriteLine(line);
-                    i += 0x10;
+                    offset += 0x10;
                 }
             }
         }
@@ -98,11 +110,7 @@ namespace hexdump
             if (!commands.TryGetValue(string.Empty, out var paths))
             {
                 var stream = Console.OpenStandardInput();
-                if (offset > 0)
-                {
-                    stream.Seek(offset, SeekOrigin.Current);
-                }
-                DumpStream(Console.Out, stream, count);
+                DumpStream(Console.Out, stream, offset, count);
                 return;
             }
 
@@ -110,11 +118,7 @@ namespace hexdump
             {
                 Console.WriteLine(path);
                 using var stream = NativeFileIO.OpenFileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-                if (offset > 0)
-                {
-                    stream.Position = offset;
-                }
-                DumpStream(Console.Out, stream, count);
+                DumpStream(Console.Out, stream, offset, count);
             }
         }
     }

@@ -26,7 +26,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{778DAE3C-4631-46EA-AA77-85C1314464D9}") = "netcheck", "netcheck\netcheck.vbproj", "{CBFDFEC3-52EF-4D6B-9FF5-410468C8C10D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "hexdump", "hexdump\hexdump.csproj", "{E162CAAF-583E-4E4D-B726-9DE717E33D53}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "hexdump", "hexdump\hexdump.csproj", "{E162CAAF-583E-4E4D-B726-9DE717E33D53}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ZipIO", "ZipIO\ZipIO.csproj", "{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -112,6 +114,14 @@ Global
 		{E162CAAF-583E-4E4D-B726-9DE717E33D53}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E162CAAF-583E-4E4D-B726-9DE717E33D53}.Release|x86.ActiveCfg = Release|Any CPU
 		{E162CAAF-583E-4E4D-B726-9DE717E33D53}.Release|x86.Build.0 = Release|Any CPU
+		{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}.Debug|x86.Build.0 = Debug|Any CPU
+		{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}.Release|x86.ActiveCfg = Release|Any CPU
+		{348F3C55-F37A-42F5-AFCC-F71F8F53E0DA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
