@@ -5,16 +5,16 @@ using System.Text;
 
 namespace ReplaceText
 {
-    class Program
+    public static class Program
     {
-        static int Main(string[] args)
+        public static int Main(params string[] args)
         {
             if (args == null || args.Length < 2 ||
                 ((args.Length & 1) == 0))
             {
                 Console.Error.WriteLine("Syntax:" + Environment.NewLine +
                     Environment.NewLine +
-                    "ReplaceText \"fromtext\" \"totext\" [file1 [ ... ]]");
+                    @"ReplaceText ""fromtext"" ""totext"" [file1 [ ... ]]");
 
                 return -1;
             }
@@ -46,41 +46,39 @@ namespace ReplaceText
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine(namepattern + ": " + ex.GetBaseException().Message);
+                Console.Error.WriteLine($"{namepattern}: {ex.GetBaseException().Message}");
                 return -1;
             }
 
             foreach (var file in files)
             {
-                Console.WriteLine("Processing file " + file);
+                Console.WriteLine($"Processing file {file}");
 
                 try
                 {
-                    var line = File.ReadAllText(file.FullName, encoding);
+                    var text = File.ReadAllText(file.FullName, encoding);
 
-                    var newline = line;
+                    var newtext = text;
 
                     foreach (var item in dict)
                     {
-                        newline = newline.Replace(item.Key, item.Value);
+                        newtext = newtext.Replace(item.Key, item.Value);
                     }
 
-                    if (!object.ReferenceEquals(newline, line))
+                    if (!ReferenceEquals(newtext, text))
                     {
-                        Console.WriteLine(file.FullName + " matches.");
+                        Console.WriteLine($"{file.FullName} matches.");
 
-                        using (var outstream = new StreamWriter(new FileStream(
-                            file.FullName, FileMode.Open, FileAccess.Write, FileShare.Delete), encoding))
-                        {
-                            outstream.Write(newline);
-                            outstream.Flush();
-                            outstream.BaseStream.SetLength(outstream.BaseStream.Length);
-                        }
+                        using var outstream = new StreamWriter(new FileStream(
+                            file.FullName, FileMode.Open, FileAccess.Write, FileShare.Delete), encoding);
+                        outstream.Write(newtext);
+                        outstream.Flush();
+                        outstream.BaseStream.SetLength(outstream.BaseStream.Position);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine(file + ": " + ex.GetBaseException().Message);
+                    Console.Error.WriteLine($"{file}: {ex.GetBaseException().Message}");
                 }
                 
                 Console.WriteLine();
