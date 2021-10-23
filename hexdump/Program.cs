@@ -16,8 +16,12 @@ namespace hexdump
         {
             if (offset != 0)
             {
-                stream.Seek(offset, offset > 0 ? SeekOrigin.Begin : SeekOrigin.End);
-                offset = stream.Position;
+                if (offset < 0)
+                {
+                    offset = stream.Length + offset;
+                }
+
+                stream.Position = offset;
             }
 
             var bytes = new byte[BufferSize];
@@ -25,9 +29,17 @@ namespace hexdump
             for (; ;)
             {
                 var length = bytes.Length;
+                if (stream.CanSeek)
+                {
+                    length = (int)Math.Min(length, stream.Length - stream.Position);
+                }
                 if (count.HasValue)
                 {
                     length = (int)Math.Min(length, count.Value);
+                }
+                if (length == 0)
+                {
+                    break;
                 }
                 length = stream.Read(bytes, 0, length);
                 if (length == 0)
@@ -117,8 +129,21 @@ namespace hexdump
             foreach (var path in paths)
             {
                 Console.WriteLine(path);
-                using var stream = NativeFileIO.OpenFileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                using var stream = OpenStream(path);
                 DumpStream(Console.Out, stream, offset, count);
+            }
+        }
+
+        public static FileStream OpenStream(string path)
+        {
+            if (path.StartsWith(@"\\?\", StringComparison.Ordinal) ||
+                path.StartsWith(@"\\.\", StringComparison.Ordinal))
+            {
+                return new DiskStream(path, FileAccess.Read);
+            }
+            else
+            {
+                return NativeFileIO.OpenFileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             }
         }
     }

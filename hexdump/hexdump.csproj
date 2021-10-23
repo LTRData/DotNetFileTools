@@ -2,15 +2,15 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>netcoreapp3.1;net35;net40</TargetFrameworks>
+    <TargetFrameworks>net40;net35;netcoreapp3.1</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
     <Reference Include="LTRLib40">
-      <HintPath>..\..\LTRLib\Release\$(TargetFramework)\LTRLib40.dll</HintPath>
+      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib40.dll</HintPath>
     </Reference>
     <Reference Include="LTRLib40.Extended">
-      <HintPath>..\..\LTRLib\Release\$(TargetFramework)\LTRLib40.Extended.dll</HintPath>
+      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib40.Extended.dll</HintPath>
     </Reference>
   </ItemGroup>
 

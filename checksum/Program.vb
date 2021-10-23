@@ -24,9 +24,9 @@ Public Module Program
 
     Sub SafeMain(args As String())
 
-        If args.Length = 0 OrElse Array.Find(args, Function(arg) arg = "/?") IsNot Nothing Then
+        If args.Length = 0 OrElse Array.Exists(args, AddressOf "/?".Equals) Then
             Console.WriteLine("Generic .NET checksum calculation tool.")
-            Console.WriteLine("Copyright (c) 2012-2016, Olof Lagerkvist, LTR Data.")
+            Console.WriteLine("Copyright (c) 2012-2021, Olof Lagerkvist, LTR Data.")
             Console.WriteLine("http://www.ltr-data.se/opencode.html")
             Console.WriteLine()
             Console.WriteLine("Syntax:")
@@ -135,47 +135,51 @@ Public Module Program
 
         Dim algorithm As HashAlgorithm = Nothing
 
-        If Not providers.TryGetValue(alg, algorithm) Then
+        SyncLock providers
 
-            algorithm = HashAlgorithm.Create(alg)
+            If Not providers.TryGetValue(alg, algorithm) Then
 
-            If algorithm Is Nothing Then
+                algorithm = HashAlgorithm.Create(alg)
 
-                Dim algType As Type = Nothing
+                If algorithm Is Nothing Then
 
-                For Each Assembly In AppDomain.CurrentDomain.GetAssemblies()
-                    For Each Type In Assembly.GetTypes()
-                        If Type.IsClass AndAlso
-                          Not Type.IsAbstract AndAlso
-                          GetType(HashAlgorithm).IsAssignableFrom(Type) AndAlso
-                          Type.GetConstructor(Type.EmptyTypes) IsNot Nothing AndAlso
-                          (Type.Name.Equals(alg, StringComparison.OrdinalIgnoreCase) OrElse
-                              Type.Name.Equals(alg & "CryptoServiceProvider", StringComparison.OrdinalIgnoreCase) OrElse
-                              Type.Name.Equals(alg & "Managed", StringComparison.OrdinalIgnoreCase) OrElse
-                              Type.Name.Equals(alg & "Cng", StringComparison.OrdinalIgnoreCase)) Then
+                    Dim algType As Type = Nothing
 
-                            algType = Type
+                    For Each Assembly In AppDomain.CurrentDomain.GetAssemblies()
+                        For Each Type In Assembly.GetTypes()
+                            If Type.IsClass AndAlso
+                              Not Type.IsAbstract AndAlso
+                              GetType(HashAlgorithm).IsAssignableFrom(Type) AndAlso
+                              Type.GetConstructor(Type.EmptyTypes) IsNot Nothing AndAlso
+                              (Type.Name.Equals(alg, StringComparison.OrdinalIgnoreCase) OrElse
+                                  Type.Name.Equals($"{alg}CryptoServiceProvider", StringComparison.OrdinalIgnoreCase) OrElse
+                                  Type.Name.Equals($"{alg}Managed", StringComparison.OrdinalIgnoreCase) OrElse
+                                  Type.Name.Equals($"{alg}Cng", StringComparison.OrdinalIgnoreCase)) Then
+
+                                algType = Type
+                                Exit For
+
+                            End If
+                        Next
+
+                        If algType IsNot Nothing Then
                             Exit For
-
                         End If
                     Next
 
-                    If algType IsNot Nothing Then
-                        Exit For
+                    If algType Is Nothing Then
+                        Return Nothing
                     End If
-                Next
 
-                If algType Is Nothing Then
-                    Return Nothing
+                    algorithm = DirectCast(Activator.CreateInstance(algType), HashAlgorithm)
+
                 End If
 
-                algorithm = DirectCast(Activator.CreateInstance(algType), HashAlgorithm)
+                providers.Add(alg, algorithm)
 
             End If
 
-            providers.Add(alg, algorithm)
-
-        End If
+        End SyncLock
 
         Return algorithm
 
@@ -208,7 +212,7 @@ Public Module Program
             End If
 
         Catch ex As Exception
-            Console.WriteLine(filename_pattern & ": " & ex.Message)
+            Console.WriteLine($"{filename_pattern}: {ex.Message}")
 
         End Try
 
@@ -219,18 +223,18 @@ Public Module Program
         Dim algorithm = GetHashProvider(alg)
 
         If algorithm Is Nothing Then
-            Console.WriteLine("Hash algorithm '" & alg & "' not supported.")
+            Console.WriteLine($"Hash algorithm '{alg}' not supported.")
             Return
         End If
 
         If TypeOf algorithm Is KeyedHashAlgorithm Then
             If String.IsNullOrEmpty(key) Then
-                Console.WriteLine("Hash algorithm '" & alg & "' requires key.")
+                Console.WriteLine($"Hash algorithm '{alg}' requires key.")
                 Return
             End If
             DirectCast(algorithm, KeyedHashAlgorithm).Key = Encoding.UTF8.GetBytes(key)
         ElseIf Not String.IsNullOrEmpty(key) Then
-            Console.WriteLine("Hash algorithm '" & alg & "' does not support keyed hashing.")
+            Console.WriteLine($"Hash algorithm '{alg}' does not support keyed hashing.")
             Return
         End If
 
@@ -246,7 +250,7 @@ Public Module Program
                 fs = New FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read Or FileShare.Delete, buffersize, FileOptions.SequentialScan)
 
             Catch ex As Exception
-                Console.WriteLine("Error opening file '" & filename & "': " & ex.Message)
+                Console.WriteLine($"Error opening file '{filename}': {ex.Message}")
                 Return
 
             End Try
@@ -259,7 +263,7 @@ Public Module Program
         Dim sb As New StringBuilder
         Array.ForEach(hash, Sub(b) sb.Append(b.ToString("x2")))
 
-        Console.WriteLine(sb.ToString() & " *" & filename)
+        Console.WriteLine($"{sb} *{filename}")
 
     End Sub
 
@@ -268,18 +272,18 @@ Public Module Program
         Dim algorithm = GetHashProvider(alg)
 
         If algorithm Is Nothing Then
-            Console.WriteLine("Hash algorithm '" & alg & "' not supported.")
+            Console.WriteLine($"Hash algorithm '{alg}' not supported.")
             Return
         End If
 
         If TypeOf algorithm Is KeyedHashAlgorithm Then
             If String.IsNullOrEmpty(key) Then
-                Console.WriteLine("Hash algorithm '" & alg & "' requires key.")
+                Console.WriteLine($"Hash algorithm '{alg}' requires key.")
                 Return
             End If
             DirectCast(algorithm, KeyedHashAlgorithm).Key = Encoding.UTF8.GetBytes(key)
         ElseIf Not String.IsNullOrEmpty(key) Then
-            Console.WriteLine("Hash algorithm '" & alg & "' does not support keyed hashing.")
+            Console.WriteLine($"Hash algorithm '{alg}' does not support keyed hashing.")
             Return
         End If
 
