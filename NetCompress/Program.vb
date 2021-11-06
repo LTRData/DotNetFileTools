@@ -28,13 +28,13 @@ Public Module Program
         Dim AssemblyFile As String = Nothing
 
         For Each arg In args
-            If arg.Equals("-d", StringComparison.InvariantCultureIgnoreCase) OrElse arg.Equals("/d", StringComparison.InvariantCultureIgnoreCase) Then
+            If arg.Equals("-d", StringComparison.OrdinalIgnoreCase) OrElse arg.Equals("/d", StringComparison.OrdinalIgnoreCase) Then
                 Mode = CompressionMode.Decompress
-            ElseIf arg.StartsWith("-a:", StringComparison.InvariantCultureIgnoreCase) OrElse arg.StartsWith("/a:", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("-a:", StringComparison.OrdinalIgnoreCase) OrElse arg.StartsWith("/a:", StringComparison.OrdinalIgnoreCase) Then
                 AssemblyFile = arg.Substring("-a:".Length)
-            ElseIf arg.StartsWith("-m:", StringComparison.InvariantCultureIgnoreCase) OrElse arg.StartsWith("/m:", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("-m:", StringComparison.OrdinalIgnoreCase) OrElse arg.StartsWith("/m:", StringComparison.OrdinalIgnoreCase) Then
                 MethodName = arg.Substring("-m:".Length)
-            ElseIf arg.StartsWith("-b:", StringComparison.InvariantCultureIgnoreCase) OrElse arg.StartsWith("/b:", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("-b:", StringComparison.OrdinalIgnoreCase) OrElse arg.StartsWith("/b:", StringComparison.OrdinalIgnoreCase) Then
                 BufferSize = Integer.Parse(arg.Substring("-b:".Length))
             Else
                 ShowHelp = True
@@ -43,7 +43,7 @@ Public Module Program
         Next
 
         If ShowHelp Then
-            Console.Error.WriteLine("Syntax:" & Environment.NewLine & "NetCompress [-d] [-m:GZip|Deflate] [-b:buffersize] [-a:assembly]")
+            Console.Error.WriteLine($"Syntax:{Environment.NewLine}NetCompress [-d] [-m:GZip|Deflate] [-b:buffersize] [-a:assembly]")
             Return
         End If
 
@@ -59,10 +59,10 @@ Public Module Program
                 AssemblyForType = Assembly.Load(AssemblyName.GetAssemblyName(AssemblyFile))
             End If
 
-            Dim MethodType = AssemblyForType.GetType("System.IO.Compression." & MethodName & "Stream", throwOnError:=False, ignoreCase:=True)
+            Dim MethodType = AssemblyForType.GetType($"System.IO.Compression.{MethodName}Stream", throwOnError:=False, ignoreCase:=True)
 
             If MethodType Is Nothing Then
-                Console.Error.WriteLine("Method " & MethodName & " not supported.")
+                Console.Error.WriteLine($"Method {MethodName} not supported.")
                 Return
             End If
 

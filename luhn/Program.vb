@@ -4,18 +4,18 @@
 
         Dim PG = False
         If args.Length > 0 Then
-            If args(0).Equals("/PG", StringComparison.InvariantCultureIgnoreCase) Then
+            If args(0).Equals("/PG", StringComparison.OrdinalIgnoreCase) Then
                 PG = True
             Else
-                Console.WriteLine("Appends Luhn checksum character to input strings.")
-                Console.WriteLine()
-                Console.WriteLine("Syntax:")
-                Console.WriteLine("luhn [/PG]")
-                Console.WriteLine()
-                Console.WriteLine("/PG      Create PlusGirot counted OCR string with")
-                Console.WriteLine("         both counter and Luhn checksum characters.")
-                Console.WriteLine("         Without this parameter, only Luhn checksum")
-                Console.WriteLine("         character is appended.")
+                Console.WriteLine("Appends Luhn checksum character to input strings.
+
+Syntax:
+luhn [/PG]
+                
+/PG      Create PlusGirot counted OCR string with
+         both counter and Luhn checksum characters.
+         Without this parameter, only Luhn checksum
+         character is appended.")
                 Return
             End If
         End If

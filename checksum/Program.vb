@@ -6,10 +6,10 @@ Imports System.Threading
 
 Public Module Program
 
-    Public Sub Main(args As String())
+    Public Sub Main(ParamArray args As String())
 
         Try
-            SafeMain(args)
+            UnsafeMain(args)
 
         Catch ex As Exception
 #If DEBUG Then
@@ -22,7 +22,7 @@ Public Module Program
 
     End Sub
 
-    Sub SafeMain(args As String())
+    Public Sub UnsafeMain(ParamArray args As String())
 
         If args.Length = 0 OrElse Array.Exists(args, AddressOf "/?".Equals) Then
             Console.WriteLine("Generic .NET checksum calculation tool.")
@@ -59,22 +59,22 @@ Public Module Program
 
         For Each arg In args
 
-            If arg.Equals("/L", StringComparison.InvariantCultureIgnoreCase) Then
+            If arg.Equals("/L", StringComparison.OrdinalIgnoreCase) Then
                 ListHashProviders()
-            ElseIf arg.StartsWith("/X:", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/X:", StringComparison.OrdinalIgnoreCase) Then
                 Dim asmfile = arg.Substring("/X:".Length)
                 Dim asmname = AssemblyName.GetAssemblyName(asmfile)
                 Assembly.Load(asmname)
-            ElseIf arg.StartsWith("/A:", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/A:", StringComparison.OrdinalIgnoreCase) Then
                 alg = arg.Substring("/A:".Length)
-            ElseIf arg.StartsWith("/K:", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/K:", StringComparison.OrdinalIgnoreCase) Then
                 key = arg.Substring("/K:".Length)
-            ElseIf arg.Equals("/S", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.Equals("/S", StringComparison.OrdinalIgnoreCase) Then
                 search_option = SearchOption.AllDirectories
-            ElseIf arg.StartsWith("/V:", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/V:", StringComparison.OrdinalIgnoreCase) Then
                 Dim valuestr = Encoding.UTF8.GetBytes(arg.Substring("/V:".Length))
                 PrintCheckSumForData(alg, key, valuestr)
-            ElseIf arg.Equals("/V", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.Equals("/V", StringComparison.OrdinalIgnoreCase) Then
                 value = True
             ElseIf value Then
                 Dim valuestr = Encoding.UTF8.GetBytes(arg)
@@ -100,9 +100,9 @@ Public Module Program
         Return thread
     End Function
 
-    ReadOnly providers As New Dictionary(Of String, HashAlgorithm)(StringComparer.InvariantCultureIgnoreCase)
+    Private ReadOnly _providers As New Dictionary(Of String, HashAlgorithm)(StringComparer.OrdinalIgnoreCase)
 
-    Sub ListHashProviders()
+    Public Sub ListHashProviders()
 
         Dim List As New List(Of String)
 
@@ -131,13 +131,13 @@ Public Module Program
 
     End Sub
 
-    Function GetHashProvider(alg As String) As HashAlgorithm
+    Public Function GetHashProvider(alg As String) As HashAlgorithm
 
         Dim algorithm As HashAlgorithm = Nothing
 
-        SyncLock providers
+        SyncLock _providers
 
-            If Not providers.TryGetValue(alg, algorithm) Then
+            If Not _providers.TryGetValue(alg, algorithm) Then
 
                 algorithm = HashAlgorithm.Create(alg)
 
@@ -175,7 +175,7 @@ Public Module Program
 
                 End If
 
-                providers.Add(alg, algorithm)
+                _providers.Add(alg, algorithm)
 
             End If
 
@@ -185,7 +185,7 @@ Public Module Program
 
     End Function
 
-    Sub PrintCheckSumForFiles(alg As String, key As String, filename_pattern As String, search_option As SearchOption)
+    Public Sub PrintCheckSumForFiles(alg As String, key As String, filename_pattern As String, search_option As SearchOption)
 
         Try
             If String.IsNullOrEmpty(filename_pattern) OrElse
@@ -212,13 +212,15 @@ Public Module Program
             End If
 
         Catch ex As Exception
-            Console.WriteLine($"{filename_pattern}: {ex.Message}")
+            Console.ForegroundColor = ConsoleColor.Red
+            Console.Error.WriteLine($"{filename_pattern}: {ex.Message}")
+            Console.ResetColor()
 
         End Try
 
     End Sub
 
-    Sub PrintCheckSumForFile(alg As String, key As String, filename As String)
+    Public Sub PrintCheckSumForFile(alg As String, key As String, filename As String)
 
         Dim algorithm = GetHashProvider(alg)
 
@@ -242,32 +244,40 @@ Public Module Program
 
         Dim hash As Byte()
 
-        Dim fs As Stream
-        If "-".Equals(filename, StringComparison.Ordinal) Then
-            fs = Console.OpenStandardInput(buffersize)
-        Else
-            Try
-                fs = New FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read Or FileShare.Delete, buffersize, FileOptions.SequentialScan)
+        Try
+            Using fs = OpenFile(filename, buffersize)
+                hash = algorithm.ComputeHash(fs)
+            End Using
 
-            Catch ex As Exception
-                Console.WriteLine($"Error opening file '{filename}': {ex.Message}")
-                Return
+        Catch ex As Exception
+            Console.ForegroundColor = ConsoleColor.Red
+            Console.Error.WriteLine($"Error opening or reading file '{filename}': {ex.Message}")
+            Console.ResetColor()
+            Return
 
-            End Try
-        End If
+        End Try
 
-        Using fs
-            hash = algorithm.ComputeHash(fs)
-        End Using
+        Dim sb As New StringBuilder(hash.Length * 2 + 2 + filename.Length)
 
-        Dim sb As New StringBuilder
         Array.ForEach(hash, Sub(b) sb.Append(b.ToString("x2")))
 
-        Console.WriteLine($"{sb} *{filename}")
+        sb.Append(" *").Append(filename)
+
+        Console.WriteLine(sb.ToString())
 
     End Sub
 
-    Sub PrintCheckSumForData(alg As String, key As String, data As Byte())
+    Private Function OpenFile(filename As String, buffersize As Integer) As Stream
+
+        If "-".Equals(filename, StringComparison.Ordinal) Then
+            Return Console.OpenStandardInput(buffersize)
+        Else
+            Return New FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read Or FileShare.Delete, buffersize, FileOptions.SequentialScan)
+        End If
+
+    End Function
+
+    Public Sub PrintCheckSumForData(alg As String, key As String, data As Byte())
 
         Dim algorithm = GetHashProvider(alg)
 
