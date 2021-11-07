@@ -104,9 +104,23 @@ Public Module Program
 
     Public Sub ListHashProviders()
 
+        Dim assemblies = AppDomain.CurrentDomain.GetAssemblies()
+
+#If NETCOREAPP Then
+        If Array.IndexOf(assemblies, GetType(SHA256).Assembly) < 0 Then
+            assemblies = AppDomain.CurrentDomain.GetAssemblies()
+        End If
+        If Array.IndexOf(assemblies, GetType(MD5).Assembly) < 0 Then
+            assemblies = AppDomain.CurrentDomain.GetAssemblies()
+        End If
+        If Array.IndexOf(assemblies, GetType(TripleDES).Assembly) < 0 Then
+            assemblies = AppDomain.CurrentDomain.GetAssemblies()
+        End If
+#End If
+
         Dim List As New List(Of String)
 
-        For Each Assembly In AppDomain.CurrentDomain.GetAssemblies()
+        For Each Assembly In assemblies
             For Each Type In Assembly.GetTypes()
                 If Type.IsClass AndAlso
                   Not Type.IsAbstract AndAlso
@@ -114,6 +128,11 @@ Public Module Program
                   Type.GetConstructor(Type.EmptyTypes) IsNot Nothing Then
 
                     Dim name = Type.Name
+                    If name.Equals("Implementation", StringComparison.Ordinal) AndAlso
+                        Type.DeclaringType IsNot Nothing Then
+
+                        name = Type.DeclaringType.Name
+                    End If
                     For Each suffix In {"CryptoServiceProvider", "Managed", "Cng"}
                         If name.EndsWith(suffix) Then
                             name = name.Remove(name.Length - suffix.Length)

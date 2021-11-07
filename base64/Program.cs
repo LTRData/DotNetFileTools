@@ -29,8 +29,26 @@ namespace base64
             {
                 if (args == null || args.Length <= 1)
                 {
-                    var buffer = new MemoryStream();
-                    Console.OpenStandardInput().CopyTo(buffer);
+                    MemoryStream buffer;
+                    var stream = Console.OpenStandardInput();
+                    if (stream.CanSeek)
+                    {
+                        buffer = new(new BinaryReader(stream).ReadBytes((int)stream.Length));
+                    }
+                    else
+                    {
+                        buffer = new();
+                        var bytes = new byte[8 << 10];
+                        for (; ; )
+                        {
+                            var count = stream.Read(bytes, 0, bytes.Length);
+                            if (count == 0)
+                            {
+                                break;
+                            }
+                            buffer.Write(bytes, 0, count);
+                        }
+                    }
                     Console.WriteLine(Convert.ToBase64String(buffer.GetBuffer(), 0, (int)buffer.Length, Base64FormattingOptions.None));
                 }
                 else 
@@ -60,7 +78,8 @@ namespace base64
             }
             else
             {
-                Console.WriteLine("Syntax: base64 -d|-e [files ...]");
+                Console.WriteLine(@"Syntax: base64 -d|-e [string]
+If no string is specified at command line, data to convert is read from standard input.");
             }
         }
     }
