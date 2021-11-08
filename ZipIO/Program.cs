@@ -53,7 +53,15 @@ namespace ZipIO
                 longlisting = true;
             }
             
-            foreach (var arg in args)
+            foreach (var arg in args.SelectMany(path =>
+            {
+                var dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrWhiteSpace(dir))
+                {
+                    dir = ".";
+                }
+                return Directory.EnumerateFiles(dir, Path.GetFileName(path));
+            }))
             {
                 try
                 {
@@ -63,10 +71,7 @@ namespace ZipIO
                     {
                         if (longlisting)
                         {
-                            Console.WriteLine(entry.LastWriteTime.LocalDateTime.ToString("g").PadLeft(19) +
-                                " " + entry.Length.ToString("#,##0").PadLeft(15) +
-                                " (" + entry.CompressedLength.ToString("#,##0").PadLeft(15) + ") " +
-                                entry.FullName);
+                            Console.WriteLine($"{entry.LastWriteTime.LocalDateTime,19:g} {entry.Length,15:#,##0} ({entry.CompressedLength,15:#,##0}) {entry.FullName}");
                         }
                         else
                         {
@@ -76,7 +81,7 @@ namespace ZipIO
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine(arg + ": " + ex.GetBaseException().Message);
+                    Console.Error.WriteLine($"{arg}: {ex.GetBaseException().Message}");
                 }
             }
 
