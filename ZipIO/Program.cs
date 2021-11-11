@@ -125,12 +125,15 @@ namespace ZipIO
                 }
 
                 using var archive = ZipFile.Open(zip_path, ZipArchiveMode.Update);
-                
+
                 foreach (var arg in files_to_add.SelectMany(path => ResolveWildcards(path, searchOption)))
                 {
                     Console.WriteLine(arg);
 
-                    using var source = File.OpenRead(arg);
+                    var fileinfo = new FileInfo(arg);
+
+                    using var source = fileinfo.OpenRead();
+
                     var entry = archive
                         .Entries
                         .FirstOrDefault(e => e.FullName.Equals(arg, StringComparison.CurrentCultureIgnoreCase));
@@ -143,6 +146,8 @@ namespace ZipIO
                     using var entryStream = entry.Open();
                     source.CopyTo(entryStream);
                     entryStream.SetLength(source.Length);
+
+                    entry.LastWriteTime = fileinfo.LastWriteTime;
                 }
             }
             catch (Exception ex)
