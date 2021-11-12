@@ -11,7 +11,7 @@ namespace ZipIO
     {
         public static int Main(params string[] args)
         {
-            if (args == null || args.Length < 2)
+            if (args is null || args.Length < 2)
             {
                 Console.Error.WriteLine("Syntax:");
                 Console.Error.WriteLine("ZipIO add|list|del|fromdir|todir|freshen|time [switches] zipfile [args ...]");
@@ -108,46 +108,85 @@ namespace ZipIO
         {
             try
             {
-                string zip_path;
-                IEnumerable<string> files_to_add;
-                SearchOption searchOption;
-                if (args[0].Equals("/S", StringComparison.OrdinalIgnoreCase))
+                if (args.Count == 0 || args[0].Equals("/?", StringComparison.Ordinal))
                 {
-                    searchOption = SearchOption.AllDirectories;
-                    zip_path = args[1];
-                    files_to_add = args.Skip(2);
+                    Console.Error.WriteLine("Syntax: zipio add [/S] [/NEWER] [/PURGE] file.zip [files ...]");
+                    return 0;
                 }
-                else
+
+                string zip_path = null;
+                var files_to_add = new List<string>();
+                var searchOption = SearchOption.TopDirectoryOnly;
+                var purge = false;
+                var newer = false;
+                foreach (var arg in args)
                 {
-                    searchOption = SearchOption.TopDirectoryOnly;
-                    zip_path = args[0];
-                    files_to_add = args.Skip(1);
+                    if (arg.Equals("/S", StringComparison.OrdinalIgnoreCase))
+                    {
+                        searchOption = SearchOption.AllDirectories;
+                    }
+                    else if (arg.Equals("/NEWER", StringComparison.OrdinalIgnoreCase))
+                    {
+                        newer = true;
+                    }
+                    else if (arg.Equals("/PURGE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        purge = true;
+                    }
+                    else if (zip_path is null)
+                    {
+                        zip_path = arg;
+                    }
+                    else
+                    {
+                        files_to_add.Add(arg);
+                    }
                 }
 
                 using var archive = ZipFile.Open(zip_path, ZipArchiveMode.Update);
 
-                foreach (var arg in files_to_add.SelectMany(path => ResolveWildcards(path, searchOption)))
-                {
-                    Console.WriteLine(arg);
+                var existing_files = new List<string>();
 
-                    var fileinfo = new FileInfo(arg);
+                foreach (var file in files_to_add.SelectMany(path => ResolveWildcards(path, searchOption)))
+                {
+                    var fileinfo = new FileInfo(file);
 
                     using var source = fileinfo.OpenRead();
 
                     var entry = archive
                         .Entries
-                        .FirstOrDefault(e => e.FullName.Equals(arg, StringComparison.CurrentCultureIgnoreCase));
+                        .FirstOrDefault(e => e.FullName.Equals(file, StringComparison.CurrentCultureIgnoreCase));
 
-                    if (entry == null)
+                    var lastWriteTimeUtc = fileinfo.LastWriteTimeUtc;
+
+                    if (entry is null)
                     {
-                        entry = archive.CreateEntry(arg, CompressionLevel.Optimal);
+                        entry = archive.CreateEntry(file, CompressionLevel.Optimal);
+                    }
+                    else if (!newer || (lastWriteTimeUtc - entry.LastWriteTime.UtcDateTime).TotalSeconds > 2)
+                    {
+                        Console.WriteLine(file);
+
+                        using var entryStream = entry.Open();
+                        source.CopyTo(entryStream);
+                        entryStream.SetLength(source.Length);
+
+                        entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
                     }
 
-                    using var entryStream = entry.Open();
-                    source.CopyTo(entryStream);
-                    entryStream.SetLength(source.Length);
+                    if (purge)
+                    {
+                        existing_files.Add(entry.FullName);
+                    }
+                }
 
-                    entry.LastWriteTime = fileinfo.LastWriteTime;
+                if (purge)
+                {
+                    foreach (var entry in archive.Entries.Where(entry => !existing_files.Contains(entry.FullName, StringComparer.OrdinalIgnoreCase)))
+                    {
+                        Console.WriteLine($"Removing '{entry.FullName}'");
+                        entry.Delete();
+                    }
                 }
             }
             catch (Exception ex)
@@ -229,7 +268,7 @@ namespace ZipIO
 
         internal static IEnumerable<Exception> Enumerate(this Exception ex)
         {
-            while (ex != null)
+            while (ex is not null)
             {
                 yield return ex;
                 ex = ex.InnerException;

@@ -17,7 +17,7 @@ namespace PictureOnMap
         [STAThread]
         public static int Main(params string[] args)
         {
-            if (args == null || args.Length == 0)
+            if (args is null || args.Length == 0)
             {
                 args = new[] { "/install" };
             }

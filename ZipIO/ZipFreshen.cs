@@ -33,14 +33,14 @@ namespace ZipIO
 
         public static int FreshenOrReplace(FreshenOrReplaceOperation operation, IReadOnlyList<string> args)
         {
-            var source_directory = string.Empty;
-
-            if (args == null || args.Count == 0)
+            if (args is null || args.Count == 0)
             {
                 args = new[] { "/?" };
             }
 
             var files = new List<string>();
+            var source_directory = string.Empty;
+            var purge = false;
 
             foreach (var arg in args)
             {
@@ -48,10 +48,14 @@ namespace ZipIO
                 {
                     source_directory = arg.Substring("/SOURCE=".Length);
                 }
+                else if (arg.Equals("/PURGE", StringComparison.OrdinalIgnoreCase))
+                {
+                    purge = true;
+                }
                 else if (arg.StartsWith("/", StringComparison.Ordinal))
                 {
                     Console.WriteLine("Syntax:");
-                    Console.WriteLine("ZipIO freshen /SOURCE=sourcedirectory [zipfile1 [zipfile2 ...]]");
+                    Console.WriteLine("ZipIO freshen /SOURCE=sourcedirectory [/PURGE] [zipfile1 [zipfile2 ...]]");
                     return -1;
                 }
                 else
@@ -77,11 +81,7 @@ namespace ZipIO
                         }
                         catch (Exception ex)
                         {
-                            WriteConsole(Console.Error,
-                                string.Concat(
-                                arg,
-                                ": ",
-                                ex.GetBaseException().Message));
+                            WriteConsole(Console.Error, $"{arg}: {ex.GetBaseException().Message}");
 
                             return Enumerable.Empty<FileInfo>();
                         }
@@ -102,33 +102,42 @@ namespace ZipIO
                                 .Select(zipEntry =>
                                 {
                                     var zipEntryFullName = zipEntry.FullName;
-                                    var sourcePath = Path.Combine(source_directory, zipEntryFullName);
+                                    var sourcePath = new FileInfo(Path.Combine(source_directory, zipEntryFullName));
 
                                     return new
                                     {
                                         zipEntry,
                                         zipEntryFullName,
                                         sourcePath,
-                                        sourceTimeStamp = File.GetLastWriteTimeUtc(sourcePath)
+                                        sourceTimeStamp = sourcePath.LastWriteTimeUtc
                                     };
                                 })
                                 .Where(entry =>
                                     !entry.zipEntryFullName.EndsWith("/") &&
                                     !entry.zipEntryFullName.EndsWith("\\") &&
                                     (operation == FreshenOrReplaceOperation.Replace ||
-                                    (entry.sourceTimeStamp -
-                                    entry.zipEntry.LastWriteTime.UtcDateTime).TotalSeconds > 2)))
+                                    (entry.sourceTimeStamp - entry.zipEntry.LastWriteTime.UtcDateTime).TotalSeconds > 2)))
                             {
-                                if (!File.Exists(entry.sourcePath))
+                                if (!entry.sourcePath.Exists)
                                 {
-                                    WriteConsole(Console.Error, $"Cannot find '{Path.Combine(file.FullName, entry.zipEntryFullName)}'");
+                                    if (purge)
+                                    {
+                                        WriteConsole(Console.Out, $"Removing '{Path.Combine(file.FullName, entry.zipEntryFullName)}'");
+                                        entry.zipEntry.Delete();
+                                    }
+                                    else
+                                    {
+                                        WriteConsole(Console.Error, $"Cannot find '{Path.Combine(file.FullName, entry.zipEntryFullName)}'");
+                                    }
+
+                                    continue;
                                 }
 
                                 WriteConsole(Console.Out, Path.Combine(file.FullName, entry.zipEntryFullName));
 
                                 try
                                 {
-                                    using var fileStream = File.OpenRead(entry.sourcePath);
+                                    using var fileStream = entry.sourcePath.OpenRead();
                                     using var zipStream = entry.zipEntry.Open();
                                     fileStream.CopyTo(zipStream);
                                     zipStream.SetLength(zipStream.Position);
@@ -146,17 +155,9 @@ namespace ZipIO
                         catch (Exception ex)
                         {
 #if DEBUG
-                            WriteConsole(Console.Error,
-                                string.Concat(
-                                file.FullName,
-                                ": ",
-                                ex.ToString()));
+                            WriteConsole(Console.Error, $"{file.FullName}: {ex}");
 #else
-                            WriteConsole(Console.Error,
-                                string.Concat(
-                                file.FullName,
-                                ": ",
-                                ex.JoinMessages()));
+                            WriteConsole(Console.Error, $"{file.FullName}: {ex.JoinMessages()}");
 #endif
                         }
 

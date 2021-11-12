@@ -25,9 +25,9 @@ namespace base64
 
         public static void UnsafeMain(params string[] args)
         {
-            if (args == null || args.Length == 0 || args[0].Equals("-e", StringComparison.Ordinal))
+            if (args is null || args.Length == 0 || args[0].Equals("-e", StringComparison.Ordinal))
             {
-                if (args == null || args.Length <= 1)
+                if (args is null || args.Length <= 1)
                 {
                     MemoryStream buffer;
                     var stream = Console.OpenStandardInput();

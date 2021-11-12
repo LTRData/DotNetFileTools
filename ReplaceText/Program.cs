@@ -9,7 +9,7 @@ namespace ReplaceText
     {
         public static int Main(params string[] args)
         {
-            if (args == null || args.Length < 2 ||
+            if (args is null || args.Length < 2 ||
                 ((args.Length & 1) == 0))
             {
                 Console.Error.WriteLine("Syntax:" + Environment.NewLine +

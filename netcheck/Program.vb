@@ -1,5 +1,10 @@
 ﻿Imports System.IO
 Imports System.Reflection
+#If NET462_OR_GREATER OrElse NETSTANDARD OrElse NETCOREAPP Then
+Imports System.Reflection.Metadata
+Imports System.Reflection.PortableExecutable
+#End If
+Imports System.Runtime.Versioning
 
 Public Module Program
 
@@ -9,7 +14,14 @@ Public Module Program
 
         Dim errors = 0
 
+        Dim nodep = False
+
         For Each arg In args
+
+            If arg.Equals("-l", StringComparison.Ordinal) Then
+                nodep = True
+                Continue For
+            End If
 
             Try
 
@@ -17,7 +29,7 @@ Public Module Program
 
                 Dim asmname = AssemblyName.GetAssemblyName(arg)
 
-                DisplayDependencies(New List(Of AssemblyName), Path.GetDirectoryName(arg), asmname, 0)
+                DisplayDependencies(New List(Of AssemblyName), Path.GetDirectoryName(arg), asmname, 0, nodep)
 
             Catch ex As Exception
                 Console.ForegroundColor = ConsoleColor.Red
@@ -32,15 +44,11 @@ Public Module Program
 
         Next
 
-        If Debugger.IsAttached Then
-            Console.ReadKey()
-        End If
-
         Return errors
 
     End Function
 
-    Sub DisplayDependencies(asmlist As List(Of AssemblyName), basepath As String, asmname As AssemblyName, indentlevel As Integer)
+    Sub DisplayDependencies(asmlist As List(Of AssemblyName), basepath As String, asmname As AssemblyName, indentlevel As Integer, nodep As Boolean)
 
         If asmlist.Find(Function(name) AssemblyName.ReferenceMatchesDefinition(name, asmname)) IsNot Nothing Then
             Return
@@ -50,16 +58,20 @@ Public Module Program
 
         Dim asm As Assembly
         Try
-            asm = Assembly.Load(asmname)
+            If asmname.CodeBase IsNot Nothing Then
+                asm = Assembly.LoadFrom(asmname.CodeBase)
+            Else
+                asm = Assembly.Load(asmname)
+            End If
 
         Catch
             Try
-                asmname = AssemblyName.GetAssemblyName(Path.Combine(basepath, $"{asmname.Name}.dll"))
-                asm = Assembly.Load(asmname)
+                asm = Assembly.LoadFrom(Path.Combine(basepath, $"{asmname.Name}.dll"))
+                asmname = asm.GetName()
 
             Catch ex As Exception
                 Console.ForegroundColor = ConsoleColor.Yellow
-                Console.Error.WriteLine($"Error loading {asmname}: {ex.Message}")
+                Console.Error.WriteLine($"Error loading {asmname}: {ex.GetBaseException().Message}")
                 Console.ResetColor()
                 Return
 
@@ -74,16 +86,75 @@ Public Module Program
             Console.ForegroundColor = ConsoleColor.White
             Console.Write($"{asm.Location}: ")
         End If
-        Console.WriteLine(asmname.FullName)
+        Console.Write(asmname.FullName)
+
+#If NET462_OR_GREATER OrElse NETSTANDARD OrElse NETCOREAPP Then
+        Using reader As New PEReader(asm.GetFiles()(0))
+
+            Dim metadataversion = reader.GetMetadataReader().MetadataVersion
+
+            Dim target_framework = asm.GetCustomAttributes(Of TargetFrameworkAttribute)().FirstOrDefault()?.FrameworkName
+
+            Dim framework = GetTargetFramework(metadataversion, target_framework)
+
+            If Not String.IsNullOrWhiteSpace(framework) Then
+                Console.Write(", ")
+                Console.Write(framework)
+            End If
+
+        End Using
+
+#End If
+
         Console.ResetColor()
+        Console.WriteLine()
 
-        For Each refasm In asm.GetReferencedAssemblies()
+        If Not nodep Then
 
-            DisplayDependencies(asmlist, basepath, refasm, indentlevel + 1)
+            For Each refasm In asm.GetReferencedAssemblies()
 
-        Next
+                DisplayDependencies(asmlist, basepath, refasm, indentlevel + 1, nodep)
+
+            Next
+
+        End If
 
     End Sub
+
+#If NET462_OR_GREATER OrElse NETSTANDARD OrElse NETCOREAPP Then
+    Private Function GetTargetFramework(metadataversion As String, target_framework As String) As String
+
+        If String.IsNullOrWhiteSpace(metadataversion) Then
+            Return Nothing
+        End If
+
+        If String.IsNullOrWhiteSpace(target_framework) Then
+
+            Dim netfx = metadataversion.Split({"v"c, "."c})
+
+            Return $"net{netfx(1)}{netfx(2)}"
+
+        End If
+
+        If target_framework.StartsWith(".NETFramework,Version=v", StringComparison.Ordinal) Then
+
+            Return $"net{target_framework.Substring(".NETFramework,Version=v".Length).Replace(".", "")}"
+
+        End If
+
+        Dim sep = target_framework.IndexOf(",Version=v", StringComparison.Ordinal)
+
+        Dim fx = target_framework.Remove(sep).TrimStart("."c).ToLowerInvariant()
+        Dim ver = target_framework.Substring(sep + ",Version=v".Length)
+
+        If fx.Equals("netcoreapp", StringComparison.Ordinal) AndAlso ver(0) >= "5"c Then
+            fx = "net"
+        End If
+
+        Return $"{fx}{ver}"
+
+    End Function
+#End If
 
     Private Sub CurrentAppDomain_UnhandledException(sender As Object, e As UnhandledExceptionEventArgs) Handles CurrentAppDomain.UnhandledException
 

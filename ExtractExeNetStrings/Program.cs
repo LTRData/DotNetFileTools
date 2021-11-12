@@ -101,14 +101,14 @@ namespace ExtractExeNetStrings
                     r.BaseStream.Position = metadataRootPos + offset;
                     long endPos = metadataRootPos + offset + size;
 
-                    if (ReadUserString(r) != null)
+                    if (ReadUserString(r) is not null)
                         throw new BadImageFormatException("Unsupported file format");
 
                     while (r.BaseStream.Position < endPos)
                     {
                         var str = ReadUserString(r);
 
-                        if (str != null)
+                        if (str is not null)
                         {
                             yield return CSStringConverter.Convert(str);
                         }

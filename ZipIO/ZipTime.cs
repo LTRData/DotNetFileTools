@@ -20,7 +20,7 @@ namespace ZipIO
             var modify_file_timestamps = false;
             var search_options = SearchOption.TopDirectoryOnly;
 
-            if (args == null ||
+            if (args is null ||
                 !args.Any())
             {
                 args = new[] { "/?" };
@@ -106,7 +106,7 @@ namespace ZipIO
             {
                 Console.Write(entry.FileName);
                 Console.Write(" - ");
-                if (entry.Exception != null)
+                if (entry.Exception is not null)
                 {
                     Console.WriteLine(entry.Exception.GetBaseException().Message);
                 }
