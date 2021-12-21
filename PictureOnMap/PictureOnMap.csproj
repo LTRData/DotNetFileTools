@@ -18,6 +18,9 @@
     <Reference Include="LTRLib.PlaceMarks">
       <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib.PlaceMarks.dll</HintPath>
     </Reference>
+    <Reference Include="LTRLib.Windows.Extended">
+      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib.Windows.Extended.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netcoreapp3.1'">
