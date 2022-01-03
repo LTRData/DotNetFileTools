@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "TestAssembly": {
-      "commandName": "Project",
-      "commandLineArgs": "ZipIO.dll"
-    }
-  }
-}
