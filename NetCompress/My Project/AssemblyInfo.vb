@@ -8,17 +8,10 @@ Imports System.Runtime.InteropServices
 
 ' Review the values of the assembly attributes
 
-<Assembly: AssemblyTitle("NetCompress")> 
-<Assembly: AssemblyDescription("")> 
-<Assembly: AssemblyCompany("Olof Lagerkvist")> 
-<Assembly: AssemblyProduct("NetCompress")> 
-<Assembly: AssemblyCopyright("Copyright © Olof Lagerkvist 2011")> 
-<Assembly: AssemblyTrademark("")> 
-
 <Assembly: ComVisible(False)>
 
 'The following GUID is for the ID of the typelib if this project is exposed to COM
-<Assembly: Guid("44e4e0a3-56f1-4893-8209-186100caa1e5")> 
+<Assembly: Guid("44e4e0a3-56f1-4893-8209-186100caa1e5")>
 
 ' Version information for an assembly consists of the following four values:
 '
@@ -30,6 +23,3 @@ Imports System.Runtime.InteropServices
 ' You can specify all the values or you can default the Build and Revision Numbers 
 ' by using the '*' as shown below:
 ' <Assembly: AssemblyVersion("1.0.*")> 
-
-<Assembly: AssemblyVersion("1.0.0.0")> 
-<Assembly: AssemblyFileVersion("1.0.0.0")> 

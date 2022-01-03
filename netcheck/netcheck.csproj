@@ -3,6 +3,9 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <Title>netcheck</Title>
+    <Product>netcheck</Product>
+    <Copyright>Copyright © Olof Lagerkvist, LTR Data 2011-2022</Copyright>
     <TargetFrameworks>net47;net20;net40;netstandard2.0;netcoreapp3.1</TargetFrameworks>
   </PropertyGroup>
 
@@ -11,5 +14,5 @@
 	    <Version>6.0.0</Version>
 	  </PackageReference>
 	</ItemGroup>
-	
+
 </Project>

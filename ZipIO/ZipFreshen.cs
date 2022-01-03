@@ -5,6 +5,9 @@ using System.IO.Compression;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable IDE0057 // Use range operator
+
 namespace ZipIO;
 
 public static class ZipFreshen
@@ -96,6 +99,8 @@ public static class ZipFreshen
 
                     try
                     {
+                        var to_be_removed = new List<ZipArchiveEntry>();
+
                         using var zip = new ZipArchive(file.Open(FileMode.Open, FileAccess.ReadWrite, FileShare.Delete), ZipArchiveMode.Update);
 
                         foreach (var entry in zip.Entries
@@ -122,8 +127,7 @@ public static class ZipFreshen
                             {
                                 if (purge)
                                 {
-                                    WriteConsole(Console.Out, $"Removing '{Path.Combine(file.FullName, entry.zipEntryFullName)}'");
-                                    entry.zipEntry.Delete();
+                                    to_be_removed.Add(entry.zipEntry);
                                 }
                                 else
                                 {
@@ -150,6 +154,12 @@ public static class ZipFreshen
                             entry.zipEntry.LastWriteTime = entry.sourceTimeStamp.ToLocalTime();
 
                             modified = true;
+                        }
+
+                        foreach (var entry in to_be_removed)
+                        {
+                            WriteConsole(Console.Out, $"Removing '{Path.Combine(file.FullName, entry.FullName)}'");
+                            entry.Delete();
                         }
                     }
                     catch (Exception ex)

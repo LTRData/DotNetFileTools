@@ -4,17 +4,16 @@
     <OutputPath>..\$(Configuration)\</OutputPath>
     <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
-    <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
-    <GenerateAssemblyDescriptionAttribute>false</GenerateAssemblyDescriptionAttribute>
-    <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
-    <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
-    <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>
-    <GenerateAssemblyFileVersionAttribute>false</GenerateAssemblyFileVersionAttribute>
-    <GenerateAssemblyVersionAttribute>false</GenerateAssemblyVersionAttribute>
     <LangVersion>Latest</LangVersion>
     <OptionStrict>On</OptionStrict>
     <DelaySign>false</DelaySign>
     <RollForward>LatestMajor</RollForward>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <Company>Olof Lagerkvist, LTR Data</Company>
+    <Copyright>Copyright © Olof Lagerkvist, LTR Data</Copyright>
+  </PropertyGroup>
+  
 </Project>

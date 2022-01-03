@@ -3,6 +3,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <Description>Show photo location on map</Description>
     <TargetFrameworks>net45;netcoreapp3.1</TargetFrameworks>
     <ApplicationIcon>icons8-country-80.ico</ApplicationIcon>
     <UseWindowsForms>true</UseWindowsForms>

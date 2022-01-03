@@ -5,6 +5,9 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text.RegularExpressions;
 
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable IDE0057 // Use range operator
+
 namespace ZipIO;
 
 public static class Program
@@ -196,7 +199,11 @@ public static class Program
 
             if (purge)
             {
-                foreach (var entry in archive.Entries.Where(entry => !existing_files.Contains(entry.FullName, StringComparer.OrdinalIgnoreCase)))
+                var to_be_removed = archive.Entries
+                    .Where(entry => !existing_files.Contains(entry.FullName, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+
+                foreach (var entry in to_be_removed)
                 {
                     Console.WriteLine($"Removing '{entry.FullName}'");
                     entry.Delete();
