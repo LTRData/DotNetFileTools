@@ -141,6 +141,12 @@ public static class Program
         {
             return new DiskStream(path, FileAccess.Read);
         }
+#if NETCOREAPP
+        else if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        }
+#endif
         else
         {
             return NativeFileIO.OpenFileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);

@@ -9,18 +9,29 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 #endif
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
 namespace netcheck;
 
 public static class Program
 {
-    static Program()
+    public static int Main(params string[] args)
     {
-        AppDomain.CurrentDomain.UnhandledException += CurrentAppDomain_UnhandledException;
+        try
+        {
+            return UnsafeMain(args);
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine($"Exception: {ex}");
+            Console.ResetColor();
+            return Marshal.GetHRForException(ex);
+        }
     }
 
-    public static int Main(params string[] args)
+    public static int UnsafeMain(params string[] args)
     {
         var errors = 0;
         var nodep = false;
@@ -160,10 +171,4 @@ public static class Program
         return $"{fx}{ver}";
     }
 #endif
-
-    private static void CurrentAppDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
-    {
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.Error.WriteLine($"Exception: {e.ExceptionObject}");
-    }
 }
