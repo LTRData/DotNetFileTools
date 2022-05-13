@@ -6,7 +6,7 @@
     <Title>netcheck</Title>
     <Product>netcheck</Product>
     <Copyright>Copyright © Olof Lagerkvist, LTR Data 2011-2022</Copyright>
-    <TargetFrameworks>net47;net20;net40;netstandard2.0;netcoreapp3.1</TargetFrameworks>
+    <TargetFrameworks>net47;net20;net40;net6.0</TargetFrameworks>
   </PropertyGroup>
 
 	<ItemGroup Condition="'$(TargetFramework.CompareTo(`net47`))' &gt;= 0">

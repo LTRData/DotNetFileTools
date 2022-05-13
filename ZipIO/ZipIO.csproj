@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <Description>ZipIO Core Console Application</Description>
-    <TargetFrameworks>netcoreapp3.1;netstandard2.0;net45</TargetFrameworks>
+    <TargetFrameworks>net6.0;net45</TargetFrameworks>
     <AssemblyName>ZipIO</AssemblyName>
     <OutputType>Exe</OutputType>
     <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
