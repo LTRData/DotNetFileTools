@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <Description>ZipIO Core Console Application</Description>
-    <TargetFrameworks>net6.0;net45</TargetFrameworks>
+    <TargetFrameworks>net6.0;net46</TargetFrameworks>
     <AssemblyName>ZipIO</AssemblyName>
     <OutputType>Exe</OutputType>
     <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="System.IO.Compression" Condition="'$(TargetFramework)' == 'net45'" />
+    <Reference Include="System.IO.Compression" Condition="'$(TargetFramework)' == 'net46'" />
   </ItemGroup>
   
 </Project>
