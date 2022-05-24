@@ -4,24 +4,16 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <Description>Show photo location on map</Description>
-    <TargetFrameworks>net45;net6.0-windows</TargetFrameworks>
+    <TargetFrameworks>net46;net6.0-windows</TargetFrameworks>
     <ApplicationIcon>icons8-country-80.ico</ApplicationIcon>
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="LTRLib40">
-      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib40.dll</HintPath>
-    </Reference>
-    <Reference Include="LTRLib.Geodesy">
-      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib.Geodesy.dll</HintPath>
-    </Reference>
-    <Reference Include="LTRLib.PlaceMarks">
-      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib.PlaceMarks.dll</HintPath>
-    </Reference>
-    <Reference Include="LTRLib.Windows.Extended">
-      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib.Windows.Extended.dll</HintPath>
-    </Reference>
+    <PackageReference Include="LTRLib40" Version="1.0.0" />
+    <PackageReference Include="LTRLib.Geodesy" Version="1.0.0" />
+    <PackageReference Include="LTRLib.Placemarks" Version="1.0.0" />
+    <PackageReference Include="LTRLib.Windows.Extended" Version="1.0.0" />
   </ItemGroup>
 
 </Project>

@@ -6,16 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="LTRLib40">
-      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib40.dll</HintPath>
-    </Reference>
-    <Reference Include="LTRLib40.Extended">
-      <HintPath>..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib40.Extended.dll</HintPath>
-    </Reference>
-    <Reference Include="LTRLib.Windows">
-      <HintPath Condition="'$(TargetFramework.CompareTo(`net5`))' &lt; 0">..\..\LTRLib\$(Configuration)\$(TargetFramework)\LTRLib.Windows.dll</HintPath>
-      <HintPath Condition="'$(TargetFramework.CompareTo(`net5`))' &gt;= 0">..\..\LTRLib\$(Configuration)\$(TargetFramework)-windows\LTRLib.Windows.dll</HintPath>
-    </Reference>
+    <PackageReference Include="LTRLib40" Version="1.0.0" />
+    <PackageReference Include="LTRLib40.Extended" Version="1.0.0" />
   </ItemGroup>
 
 </Project>
