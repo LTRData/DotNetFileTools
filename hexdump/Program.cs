@@ -126,27 +126,36 @@ public static class Program
             return;
         }
 
-        foreach (var path in paths)
+        foreach (var path in paths
+            .SelectMany(path => Directory.EnumerateFiles(GetDirectoryOrCurrent(path), Path.GetFileName(path))))
         {
+            Console.WriteLine();
             Console.WriteLine(path);
             using var stream = OpenStream(path);
             DumpStream(Console.Out, stream, offset, count);
         }
     }
 
+    public static string GetDirectoryOrCurrent(string path)
+    {
+        path = Path.GetDirectoryName(path);
+        return string.IsNullOrWhiteSpace(path) ? "." : path;
+    }
+
     public static FileStream OpenStream(string path)
     {
+#if NETCOREAPP
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        }
+#endif
+
         if (path.StartsWith(@"\\?\", StringComparison.Ordinal) ||
             path.StartsWith(@"\\.\", StringComparison.Ordinal))
         {
             return new DiskStream(path, FileAccess.Read);
         }
-#if NETCOREAPP
-        else if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-        }
-#endif
         else
         {
             return NativeFileIO.OpenFileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);

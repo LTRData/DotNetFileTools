@@ -10,10 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LTRLib40" Version="1.0.0" />
-    <PackageReference Include="LTRLib.Geodesy" Version="1.0.0" />
-    <PackageReference Include="LTRLib.Placemarks" Version="1.0.0" />
-    <PackageReference Include="LTRLib.Windows.Extended" Version="1.0.0" />
+    <PackageReference Include="LTRLib40" Version="*" />
+    <PackageReference Include="LTRLib.Geodesy" Version="*" />
+    <PackageReference Include="LTRLib.Placemarks" Version="*" />
+    <PackageReference Include="LTRLib.Windows.Extended" Version="*" />
   </ItemGroup>
 
 </Project>
