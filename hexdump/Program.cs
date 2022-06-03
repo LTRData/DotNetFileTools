@@ -127,7 +127,15 @@ public static class Program
         }
 
         foreach (var path in paths
-            .SelectMany(path => Directory.EnumerateFiles(GetDirectoryOrCurrent(path), Path.GetFileName(path))))
+            .SelectMany(path =>
+            {
+                if (path.StartsWith(@"\\?\", StringComparison.Ordinal) ||
+                    path.StartsWith(@"\\.\", StringComparison.Ordinal))
+                {
+                    return Enumerable.Repeat(path, 1);
+                }
+                return Directory.EnumerateFiles(GetDirectoryOrCurrent(path), Path.GetFileName(path));
+            }))
         {
             Console.WriteLine();
             Console.WriteLine(path);
