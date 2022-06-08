@@ -32,18 +32,20 @@ Public Module Program
             Console.WriteLine("Syntax:")
             Console.WriteLine()
             Console.WriteLine("checksum [/X:assembly] [/S] [/A:algorithm] [/K:key] file1")
-            Console.WriteLine("        [[/A:algorithm] [/K:key] file2 ...]")
+            Console.WriteLine("        [[/A:algorithm] [/K:key] [/C] file2 ...]")
             Console.WriteLine()
             Console.WriteLine("checksum [/X:assembly] /L")
             Console.WriteLine()
             Console.WriteLine("/X      Specify name and path to assembly file to search for hash algorithms.")
             Console.WriteLine()
-            Console.WriteLine("/S      Search subdirectories.")
+            Console.WriteLine("/S      Search subdirectories for files to hash.")
             Console.WriteLine()
             Console.WriteLine("/A      Specifies algorithm. Can be any .NET supported hashing algorithm, such")
             Console.WriteLine("        as MD5, SHA1 or RIPEMD160.")
             Console.WriteLine()
             Console.WriteLine("/K      For HMAC shared-key hash providers, specifies secret key for checksum.")
+            Console.WriteLine()
+            Console.WriteLine("/C      Output in C/C++/C# code format.")
             Console.WriteLine()
             Console.WriteLine("/L      Lists available hash algorithms.")
             Console.WriteLine()
@@ -54,6 +56,7 @@ Public Module Program
         Dim key As String = Nothing
         Dim search_option = SearchOption.TopDirectoryOnly
         Dim value = False
+        Dim output_code = False
 
         Dim threads As New List(Of Thread)
 
@@ -73,14 +76,16 @@ Public Module Program
                 search_option = SearchOption.AllDirectories
             ElseIf arg.StartsWith("/V:", StringComparison.OrdinalIgnoreCase) Then
                 Dim valuestr = Encoding.UTF8.GetBytes(arg.Substring("/V:".Length))
-                PrintCheckSumForData(alg, key, valuestr)
+                PrintCheckSumForData(alg, key, output_code, valuestr)
             ElseIf arg.Equals("/V", StringComparison.OrdinalIgnoreCase) Then
                 value = True
+            ElseIf arg.Equals("/C", StringComparison.OrdinalIgnoreCase) Then
+                output_code = True
             ElseIf value Then
                 Dim valuestr = Encoding.UTF8.GetBytes(arg)
-                PrintCheckSumForData(alg, key, valuestr)
+                PrintCheckSumForData(alg, key, output_code, valuestr)
             Else
-                Dim thread = PrintCheckSumForFilesThread(alg, key, arg, search_option)
+                Dim thread = PrintCheckSumForFilesThread(alg, key, arg, output_code, search_option)
                 threads.Add(thread)
             End If
 
@@ -94,8 +99,8 @@ Public Module Program
 
     End Sub
 
-    Private Function PrintCheckSumForFilesThread(alg As String, key As String, arg As String, search_option As SearchOption) As Thread
-        Dim thread As New Thread(Sub() PrintCheckSumForFiles(alg, key, arg, search_option))
+    Private Function PrintCheckSumForFilesThread(alg As String, key As String, arg As String, output_code As Boolean, search_option As SearchOption) As Thread
+        Dim thread As New Thread(Sub() PrintCheckSumForFiles(alg, key, arg, output_code, search_option))
         thread.Start()
         Return thread
     End Function
@@ -204,13 +209,13 @@ Public Module Program
 
     End Function
 
-    Public Sub PrintCheckSumForFiles(alg As String, key As String, filename_pattern As String, search_option As SearchOption)
+    Public Sub PrintCheckSumForFiles(alg As String, key As String, filename_pattern As String, output_code As Boolean, search_option As SearchOption)
 
         Try
             If String.IsNullOrEmpty(filename_pattern) OrElse
                 "-".Equals(filename_pattern, StringComparison.Ordinal) Then
 
-                PrintCheckSumForFile(alg, key, "-")
+                PrintCheckSumForFile(alg, key, "-", output_code)
 
             Else
 
@@ -225,7 +230,7 @@ Public Module Program
                     If filename.StartsWith(".\", StringComparison.Ordinal) Then
                         filename = filename.Substring(2)
                     End If
-                    PrintCheckSumForFile(alg, key, filename)
+                    PrintCheckSumForFile(alg, key, filename, output_code)
                 Next
 
             End If
@@ -239,7 +244,7 @@ Public Module Program
 
     End Sub
 
-    Public Sub PrintCheckSumForFile(alg As String, key As String, filename As String)
+    Public Sub PrintCheckSumForFile(alg As String, key As String, filename As String, output_code As Boolean)
 
         Dim algorithm = GetHashProvider(alg)
 
@@ -276,13 +281,7 @@ Public Module Program
 
         End Try
 
-        Dim sb As New StringBuilder(hash.Length * 2 + 2 + filename.Length)
-
-        Array.ForEach(hash, Sub(b) sb.Append(b.ToString("x2")))
-
-        sb.Append(" *").Append(filename)
-
-        Console.WriteLine(sb.ToString())
+        PrintChecksum(hash, filename, output_code)
 
     End Sub
 
@@ -296,7 +295,7 @@ Public Module Program
 
     End Function
 
-    Public Sub PrintCheckSumForData(alg As String, key As String, data As Byte())
+    Public Sub PrintCheckSumForData(alg As String, key As String, output_code As Boolean, data As Byte())
 
         Dim algorithm = GetHashProvider(alg)
 
@@ -322,11 +321,33 @@ Public Module Program
 
         hash = algorithm.ComputeHash(data)
 
-        Dim sb As New StringBuilder(hash.Length << 1)
+        PrintChecksum(hash, "", output_code)
 
-        Array.ForEach(hash, Sub(b) sb.Append(b.ToString("x2")))
+    End Sub
 
-        sb.Append(" *")
+    Public Sub PrintChecksum(hash As Byte(), filename As String, output_code As Boolean)
+
+        Dim sb As StringBuilder
+
+        If output_code Then
+
+            sb = New StringBuilder(hash.Length * 6 + 10 + filename.Length)
+
+            sb.Append("{ ")
+
+            sb.Append(String.Join(", ", Array.ConvertAll(hash, Function(b) $"0x{b:x2}")))
+
+            sb.Append(" };  // ").Append(filename)
+
+        Else
+
+            sb = New StringBuilder(hash.Length * 2 + 2 + filename.Length)
+
+            Array.ForEach(hash, Sub(b) sb.Append(b.ToString("x2")))
+
+            sb.Append(" *").Append(filename)
+
+        End If
 
         Console.WriteLine(sb.ToString())
 
