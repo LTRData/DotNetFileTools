@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -424,6 +425,8 @@ public static class Program
                 Console.ResetColor();
             }
 
+            List<(string library, string entryPoint)> imports = null;
+
             foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
@@ -468,6 +471,28 @@ public static class Program
                 if (m.IsFinal)
                 {
                     Console.Write("final ");
+                }
+                var dllimport = m.GetCustomAttribute<DllImportAttribute>();
+                if (dllimport is not null && !m.IsDefined(typeof(ObsoleteAttribute)))
+                {
+                    imports ??= new();
+                    Console.Write("import(");
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.Write(@$"""{dllimport.Value}""");
+                    if (dllimport.EntryPoint is not null)
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkCyan;
+                        Console.Write(", ");
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.Write(@$"""{dllimport.EntryPoint}""");
+                        imports.Add((dllimport.Value, dllimport.EntryPoint));
+                    }
+                    else
+                    {
+                        imports.Add((dllimport.Value, m.Name));
+                    }
+                    Console.ForegroundColor = ConsoleColor.DarkCyan;
+                    Console.Write(") ");
                 }
                 Console.Write(m.ReturnType.FormatTypeName() + " ");
                 Console.ForegroundColor = ConsoleColor.Gray;
@@ -527,6 +552,28 @@ public static class Program
 
                 Console.ResetColor();
             }
+
+#if NETCOREAPP
+            if (imports is not null)
+            {
+                foreach (var (library, entryPoint) in imports)
+                {
+                    if (!NativeLibrary.TryLoad(library, out var lib))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.Error.WriteLine($"// Unresolved DllImport: Error loading library '{library}'");
+                        continue;
+                    }
+
+                    if (!NativeLibrary.TryGetExport(lib, entryPoint, out _))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.Error.WriteLine($"// Unresolved DllImport: Cannot find function '{entryPoint}' in library '{library}'");
+                        continue;
+                    }
+                }
+            }
+#endif
 
             Console.ForegroundColor = ConsoleColor.DarkYellow;
             Console.WriteLine("  }");
