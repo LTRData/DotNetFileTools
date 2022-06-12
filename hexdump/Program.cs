@@ -111,7 +111,7 @@ public static class Program
                     Console.WriteLine();
                 }
                 Console.WriteLine("Hex dump tool by Olof Lagerkvist, LTR Data");
-                Console.WriteLine("Copyright (c) LTR Data 2021, http://ltr-data.se");
+                Console.WriteLine("Copyright (c) LTR Data 2022, http://ltr-data.se");
                 Console.WriteLine();
                 Console.WriteLine("Syntax:");
                 Console.WriteLine("hexdump [--offset:n] [--count:n] [file1 ...]");
