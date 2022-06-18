@@ -62,17 +62,24 @@ public static class Program
         }
     }
 
-    public static int Main(params string[] command_line_args)
+    public static int Main(params string[] args)
     {
         try
         {
-            UnsafeMain(command_line_args);
+            UnsafeMain(args);
             return 0;
         }
         catch (Exception ex)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.Error.WriteLine(ex.JoinMessages());
+			if (args.Contains("--trace", StringComparer.Ordinal))
+			{
+				Console.Error.WriteLine(ex.ToString());
+			}
+			else
+			{
+				Console.Error.WriteLine(ex.JoinMessages());
+			}
             Console.ResetColor();
             return Marshal.GetHRForException(ex);
         }
@@ -90,19 +97,22 @@ public static class Program
             if (command.Key.Length == 0)
             {
             }
-            else if (command.Key.Equals("offset", StringComparison.OrdinalIgnoreCase) &&
+            else if (command.Key == "offset" &&
                 command.Value.Length == 1)
             {
                 offset = StringSupport.ParseSuffixedSize(command.Value[0]) ??
                     throw new FormatException($"The value '{command.Value[0]}' is not a valid size");
             }
-            else if (command.Key.Equals("count", StringComparison.OrdinalIgnoreCase) &&
+            else if (command.Key == "count" &&
                 command.Value.Length == 1)
             {
                 count = StringSupport.ParseSuffixedSize(command.Value[0]) ??
                     throw new FormatException($"The value '{command.Value[0]}' is not a valid size");
             }
-            else
+            else if (command.Key == "trace")
+			{
+			}
+			else
             {
                 if (!command.Key.Equals("help", StringComparison.OrdinalIgnoreCase) &&
                     !command.Key.Equals("?", StringComparison.Ordinal))
@@ -134,7 +144,11 @@ public static class Program
                 {
                     return Enumerable.Repeat(path, 1);
                 }
-                return Directory.EnumerateFiles(GetDirectoryOrCurrent(path), Path.GetFileName(path));
+				
+				var dir = GetDirectoryOrCurrent(path);
+				var pattern = Path.GetFileName(path);
+				
+                return Directory.EnumerateFiles(dir, pattern);
             }))
         {
             Console.WriteLine();
