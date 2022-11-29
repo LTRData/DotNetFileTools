@@ -65,6 +65,7 @@ public static class Program
             {
                 dir = ".";
             }
+
             try
             {
                 return Directory.EnumerateFiles(dir, Path.GetFileName(path));
@@ -107,15 +108,20 @@ public static class Program
 
     internal static IEnumerable<string> ResolveWildcards(string path, SearchOption searchOption)
     {
-        var dir = Path.GetDirectoryName(path);
+        var dir = Path.GetDirectoryName(path) ?? "";
         var searchdir = dir;
+        
         if (string.IsNullOrWhiteSpace(searchdir))
         {
             searchdir = ".";
         }
+        
         var file = Path.GetFileName(path);
+        
         path = Path.Combine(searchdir, file);
+        
         var prefix_length = path.Length - file.Length;
+        
         return Directory
             .EnumerateFiles(searchdir, file, searchOption)
             .Select(entry => Path.Combine(dir, entry.Substring(prefix_length)));
@@ -131,7 +137,7 @@ public static class Program
                 return 0;
             }
 
-            string zip_path = null;
+            string? zip_path = null;
             var files_to_add = new List<string>();
             var searchOption = SearchOption.TopDirectoryOnly;
             var purge = false;
@@ -160,7 +166,7 @@ public static class Program
                 }
             }
 
-            using var archive = ZipFile.Open(zip_path, ZipArchiveMode.Update);
+            using var archive = ZipFile.Open(zip_path!, ZipArchiveMode.Update);
 
             var existing_files = new List<string>();
 
@@ -178,9 +184,18 @@ public static class Program
 
                 if (entry is null)
                 {
+                    Console.WriteLine(file);
+
                     entry = archive.CreateEntry(file, CompressionLevel.Optimal);
+
+                    using var entryStream = entry.Open();
+                    source.CopyTo(entryStream);
+                    entryStream.SetLength(source.Length);
+
+                    entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
                 }
-                else if (!newer || (lastWriteTimeUtc - entry.LastWriteTime.UtcDateTime).TotalSeconds > 2)
+                else if (!newer ||
+                    (lastWriteTimeUtc - entry.LastWriteTime.UtcDateTime).TotalSeconds > 2)
                 {
                     Console.WriteLine(file);
 
@@ -191,7 +206,7 @@ public static class Program
                     entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
                 }
 
-                if (purge)
+                if (purge && entry is not null)
                 {
                     existing_files.Add(entry.FullName);
                 }
@@ -295,7 +310,7 @@ public static class Program
     internal static string JoinMessages(this Exception ex) =>
         string.Join(" -> ", ex.Enumerate().Select(e => e.Message));
 
-    internal static IEnumerable<Exception> Enumerate(this Exception ex)
+    internal static IEnumerable<Exception> Enumerate(this Exception? ex)
     {
         while (ex is not null)
         {

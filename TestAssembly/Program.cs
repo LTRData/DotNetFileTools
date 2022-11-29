@@ -32,7 +32,7 @@ public static class Program
         }
         else
         {
-            return value.ToString();
+            return value.ToString() ?? "null";
         }
     }
 
@@ -86,6 +86,7 @@ public static class Program
                 continueOnFailure = true;
                 return Enumerable.Empty<string>();
             }
+
             if ("-r".Equals(name, StringComparison.Ordinal))
             {
                 searchOption = SearchOption.AllDirectories;
@@ -124,6 +125,7 @@ public static class Program
                 {
                     Console.Error.WriteLine($"{fullpath}: {tlex}");
                 }
+
                 Console.ResetColor();
 
                 result = ex.LoaderExceptions.FirstOrDefault()?.HResult ?? ex.HResult;
@@ -156,26 +158,32 @@ public static class Program
             {
                 Console.Write("internal ");
             }
+
             if (t.IsNestedFamANDAssem)
             {
                 Console.Write("internal protected ");
             }
+
             if (t.IsNestedFamily)
             {
                 Console.Write("protected ");
             }
+
             if (t.IsNestedFamORAssem)
             {
                 Console.Write("protected internal ");
             }
+
             if (t.IsNestedPrivate)
             {
                 Console.Write("private ");
             }
+
             if (t.IsNestedPublic)
             {
                 Console.Write("public ");
             }
+
             if (t.IsAbstract && t.IsSealed)
             {
                 Console.Write("static ");
@@ -188,34 +196,42 @@ public static class Program
             {
                 Console.Write("sealed ");
             }
+
             if (t.IsArray)
             {
                 Console.Write("array ");
             }
+
             if (t.IsAutoClass)
             {
                 Console.Write("auto ");
             }
+
             if (t.IsByRef)
             {
                 Console.Write("byref ");
             }
+
             if (t.IsCOMObject)
             {
                 Console.Write("com ");
             }
+
             if (t.IsContextful)
             {
                 Console.Write("contextful ");
             }
+
             if (t.IsExplicitLayout)
             {
                 Console.Write("explicit ");
             }
+
             if (t.IsImport)
             {
                 Console.Write("import ");
             }
+
             if (t.IsInterface)
             {
                 Console.Write("interface ");
@@ -230,12 +246,14 @@ public static class Program
                 {
                     Console.Write("flags ");
                 }
+
                 Console.Write("enum ");
             }
             else if (t.IsValueType)
             {
                 Console.Write("struct ");
             }
+
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.Write(t.FormatTypeName());
             Console.ForegroundColor = ConsoleColor.DarkYellow;
@@ -256,7 +274,7 @@ public static class Program
                 }
             }
 
-            InterfaceMapping[] interfaceMappings;
+            InterfaceMapping[]? interfaceMappings;
 
             if (!t.IsInterface &&
                 t.GetInterfaces() is Type[] interfaces &&
@@ -286,26 +304,32 @@ public static class Program
                 {
                     Console.Write("internal ");
                 }
+
                 if (m.IsFamily)
                 {
                     Console.Write("protected ");
                 }
+
                 if (m.IsFamilyAndAssembly)
                 {
                     Console.Write("internal protected ");
                 }
+
                 if (m.IsFamilyOrAssembly)
                 {
                     Console.Write("protected internal ");
                 }
+
                 if (m.IsPrivate)
                 {
                     Console.Write("private ");
                 }
+
                 if (m.IsPublic)
                 {
                     Console.Write("public ");
                 }
+
                 if (m.IsLiteral)
                 {
                     Console.Write("const ");
@@ -314,14 +338,17 @@ public static class Program
                 {
                     Console.Write("static ");
                 }
+
                 if (m.IsInitOnly)
                 {
                     Console.Write("readonly ");
                 }
+
                 if (!m.IsLiteral || m.FieldType != m.DeclaringType)
                 {
                     Console.Write(m.FieldType.FormatTypeName() + " ");
                 }
+
                 Console.ForegroundColor = ConsoleColor.Gray;
                 Console.Write(m.Name);
 
@@ -349,42 +376,52 @@ public static class Program
                 {
                     Console.Write("internal ");
                 }
+
                 if (m.IsFamily)
                 {
                     Console.Write("protected ");
                 }
+
                 if (m.IsFamilyAndAssembly)
                 {
                     Console.Write("internal protected ");
                 }
+
                 if (m.IsFamilyOrAssembly)
                 {
                     Console.Write("protected internal ");
                 }
+
                 if (m.IsPrivate)
                 {
                     Console.Write("private ");
                 }
+
                 if (m.IsPublic)
                 {
                     Console.Write("public ");
                 }
+
                 if (m.IsStatic)
                 {
                     Console.Write("static ");
                 }
+
                 if (m.IsAbstract)
                 {
                     Console.Write("abstract ");
                 }
+
                 if (m.IsVirtual)
                 {
                     Console.Write("virtual ");
                 }
+
                 if (m.IsFinal)
                 {
                     Console.Write("final ");
                 }
+
                 Console.ForegroundColor = ConsoleColor.Gray;
                 Console.Write(m.Name);
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
@@ -397,18 +434,22 @@ public static class Program
                     {
                         sb.Append("this ");
                     }
+
                     if (p.IsRetval)
                     {
                         sb.Append("retval ");
                     }
+
                     if (p.IsIn)
                     {
                         sb.Append("in ");
                     }
+
                     if (p.IsOut)
                     {
                         sb.Append("out ");
                     }
+
                     sb.Append(p.ParameterType.FormatTypeName());
                     sb.Append(' ');
                     sb.Append(p.Name);
@@ -417,6 +458,7 @@ public static class Program
                         sb.Append(" = ");
                         sb.Append(p.DefaultValue ?? "null");
                     }
+
                     return sb.ToString();
                 });
 
@@ -425,7 +467,7 @@ public static class Program
                 Console.ResetColor();
             }
 
-            List<(string library, string entryPoint)> imports = null;
+            List<(string library, string entryPoint, CharSet charSet)>? imports = null;
 
             foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
@@ -436,42 +478,52 @@ public static class Program
                 {
                     Console.Write("internal ");
                 }
+
                 if (m.IsFamily)
                 {
                     Console.Write("protected ");
                 }
+
                 if (m.IsFamilyAndAssembly)
                 {
                     Console.Write("internal protected ");
                 }
+
                 if (m.IsFamilyOrAssembly)
                 {
                     Console.Write("protected internal ");
                 }
+
                 if (m.IsPrivate)
                 {
                     Console.Write("private ");
                 }
+
                 if (m.IsPublic)
                 {
                     Console.Write("public ");
                 }
+
                 if (m.IsStatic)
                 {
                     Console.Write("static ");
                 }
+
                 if (m.IsAbstract)
                 {
                     Console.Write("abstract ");
                 }
+
                 if (m.IsVirtual)
                 {
                     Console.Write("virtual ");
                 }
+
                 if (m.IsFinal)
                 {
                     Console.Write("final ");
                 }
+
                 var dllimport = m.GetCustomAttribute<DllImportAttribute>();
                 if (dllimport is not null && !m.IsDefined(typeof(ObsoleteAttribute)))
                 {
@@ -485,15 +537,17 @@ public static class Program
                         Console.Write(", ");
                         Console.ForegroundColor = ConsoleColor.Cyan;
                         Console.Write(@$"""{dllimport.EntryPoint}""");
-                        imports.Add((dllimport.Value, dllimport.EntryPoint));
+                        imports.Add((dllimport.Value, dllimport.EntryPoint, dllimport.CharSet));
                     }
                     else
                     {
-                        imports.Add((dllimport.Value, m.Name));
+                        imports.Add((dllimport.Value, m.Name, dllimport.CharSet));
                     }
+
                     Console.ForegroundColor = ConsoleColor.DarkCyan;
                     Console.Write(") ");
                 }
+
                 Console.Write(m.ReturnType.FormatTypeName() + " ");
                 Console.ForegroundColor = ConsoleColor.Gray;
                 Console.Write(m.Name);
@@ -507,18 +561,22 @@ public static class Program
                     {
                         sb.Append("this ");
                     }
+
                     if (p.IsRetval)
                     {
                         sb.Append("retval ");
                     }
+
                     if (p.IsIn)
                     {
                         sb.Append("in ");
                     }
+
                     if (p.IsOut)
                     {
                         sb.Append("out ");
                     }
+
                     sb.Append(p.ParameterType.FormatTypeName());
                     sb.Append(' ');
                     sb.Append(p.Name);
@@ -527,6 +585,7 @@ public static class Program
                         sb.Append(" = ");
                         sb.Append(p.DefaultValue ?? "null");
                     }
+
                     return sb.ToString();
                 });
 
@@ -539,7 +598,7 @@ public static class Program
                         .Select((tm, i) => new { tm, im = ifm.InterfaceMethods[i] })
                         .Where(o => o.tm == m))
                         .SelectMany(o => o)
-                        .Select(o => $"{o.im.DeclaringType.FormatTypeName()}.{o.im.Name}")
+                        .Select(o => $"{o.im.DeclaringType?.FormatTypeName()}.{o.im.Name}")
                         .ToArray();
 
                     if (ifimpl.Length > 0)
@@ -556,7 +615,7 @@ public static class Program
 #if NETCOREAPP
             if (imports is not null)
             {
-                foreach (var (library, entryPoint) in imports)
+                foreach (var (library, entryPoint, charSet) in imports)
                 {
                     if (!NativeLibrary.TryLoad(library, out var lib))
                     {
@@ -565,12 +624,41 @@ public static class Program
                         continue;
                     }
 
-                    if (!NativeLibrary.TryGetExport(lib, entryPoint, out _))
+                    if (NativeLibrary.TryGetExport(lib, entryPoint, out _))
                     {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.Error.WriteLine($"// Unresolved DllImport: Cannot find function '{entryPoint}' in library '{library}'");
                         continue;
                     }
+
+                    switch (charSet)
+                    {
+                        case CharSet.None:
+                        case CharSet.Ansi:
+                            {
+                                if (NativeLibrary.TryGetExport(lib, $"{entryPoint}A", out _))
+                                {
+                                    continue;
+                                }
+
+                                break;
+                            }
+
+                        case CharSet.Unicode:
+                        case CharSet.Auto:
+                            {
+                                if (NativeLibrary.TryGetExport(lib, $"{entryPoint}W", out _))
+                                {
+                                    continue;
+                                }
+
+                                break;
+                            }
+
+                        default:
+                            break;
+                    }
+
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Error.WriteLine($"// Unresolved DllImport: Cannot find function '{entryPoint}' in library '{library}'");
                 }
             }
 #endif

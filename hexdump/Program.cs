@@ -33,23 +33,28 @@ public static class Program
             {
                 length = (int)Math.Min(length, stream.Length - stream.Position);
             }
+
             if (count.HasValue)
             {
                 length = (int)Math.Min(length, count.Value);
             }
+
             if (length == 0)
             {
                 break;
             }
+
             length = stream.Read(bytes, 0, length);
             if (length == 0)
             {
                 break;
             }
+
             if (count.HasValue)
             {
                 count -= length;
             }
+
             foreach (var line in bytes.Take(length).FormatHexLines())
             {
                 writer.Write(((ushort)(offset >> 16)).ToString("X4"));
@@ -80,6 +85,7 @@ public static class Program
 			{
 				Console.Error.WriteLine(ex.JoinMessages());
 			}
+
             Console.ResetColor();
             return Marshal.GetHRForException(ex);
         }
@@ -120,6 +126,7 @@ public static class Program
                     Console.WriteLine($"Unsupported option '{command.Key}'");
                     Console.WriteLine();
                 }
+
                 Console.WriteLine("Hex dump tool by Olof Lagerkvist, LTR Data");
                 Console.WriteLine("Copyright (c) LTR Data 2022, http://ltr-data.se");
                 Console.WriteLine();
@@ -158,7 +165,7 @@ public static class Program
         }
     }
 
-    public static string GetDirectoryOrCurrent(string path)
+    public static string GetDirectoryOrCurrent(string? path)
     {
         path = Path.GetDirectoryName(path);
         return string.IsNullOrWhiteSpace(path) ? "." : path;

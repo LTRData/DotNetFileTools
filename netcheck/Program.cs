@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 #if NET461_OR_GREATER || NETSTANDARD || NETCOREAPP
 using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 #endif
 using System.Runtime.InteropServices;
@@ -35,6 +36,7 @@ public static class Program
     {
         var errors = 0;
         var nodep = false;
+        var depforall = false;
         foreach (var arg in args)
         {
             if (arg.Equals("-l", StringComparison.Ordinal))
@@ -43,11 +45,17 @@ public static class Program
                 continue;
             }
 
+            if (arg.Equals("-a", StringComparison.Ordinal))
+            {
+                depforall = true;
+                continue;
+            }
+
             try
             {
                 var path = Path.GetFullPath(arg);
                 var asmname = AssemblyName.GetAssemblyName(path);
-                DisplayDependencies(new(), Path.GetDirectoryName(path), asmname, 0, nodep);
+                DisplayDependencies(new(), Path.GetDirectoryName(path), asmname, "", nodep, depforall);
             }
             catch (Exception ex)
             {
@@ -63,14 +71,20 @@ public static class Program
         return errors;
     }
 
-    public static void DisplayDependencies(List<AssemblyName> asmlist, string basepath, AssemblyName asmname, int indentlevel, bool nodep)
+    public static void DisplayDependencies(List<AssemblyName> asmlist, string? basepath, AssemblyName asmname, string indentlevel, bool nodep, bool depforall)
     {
-        if (asmlist.Find(name => AssemblyName.ReferenceMatchesDefinition(name, asmname)) is not null)
+        var existing = asmlist.Find(name => AssemblyName.ReferenceMatchesDefinition(name, asmname)) is not null;
+
+        if (!depforall && existing)
         {
             return;
         }
 
-        asmlist.Add(asmname);
+        if (!existing)
+        {
+            asmlist.Add(asmname);
+        }
+
         Assembly asm;
         try
         {
@@ -87,7 +101,7 @@ public static class Program
         {
             try
             {
-                asm = Assembly.LoadFrom(Path.Combine(basepath, $"{asmname.Name}.dll"));
+                asm = Assembly.LoadFrom(Path.Combine(basepath ?? ".", $"{asmname.Name}.dll"));
                 asmname = asm.GetName();
             }
             catch (Exception ex)
@@ -99,7 +113,15 @@ public static class Program
             }
         }
 
-        Console.Write(new string(' ', 2 * indentlevel));
+#if !NETCOREAPP
+
+        if (existing && asm.GlobalAssemblyCache)
+        {
+            return;
+        }
+
+        Console.Write(indentlevel);
+
         if (asm.GlobalAssemblyCache)
         {
             Console.ForegroundColor = ConsoleColor.Green;
@@ -110,8 +132,18 @@ public static class Program
             Console.Write($"{asm.Location}: ");
         }
 
+#else
+
+        Console.Write(indentlevel);
+        Console.ForegroundColor = ConsoleColor.White;
+        Console.Write($"{asm.Location}: ");
+
+#endif
+
         Console.Write(asmname.FullName);
+
 #if NET461_OR_GREATER || NETSTANDARD || NETCOREAPP
+
         try
         {
             using var reader = new PEReader(asm.GetFiles()[0]);
@@ -132,24 +164,29 @@ public static class Program
 
         Console.ResetColor();
         Console.WriteLine();
-        if (!nodep)
+        if (nodep || existing)
         {
-            foreach (var refasm in asm.GetReferencedAssemblies())
-            {
-                DisplayDependencies(asmlist, basepath, refasm, indentlevel + 1, nodep);
-            }
+            return;
+        }
+
+        var subindentlevel = $"{indentlevel} ";
+
+        foreach (var refasm in asm.GetReferencedAssemblies())
+        {
+            DisplayDependencies(asmlist, basepath, refasm, subindentlevel, nodep, depforall);
         }
     }
 
 #if NET461_OR_GREATER || NETSTANDARD || NETCOREAPP
-    private static string GetTargetFramework(string metadataversion, string target_framework)
+    private static string? GetTargetFramework(string metadataversion, string? target_framework)
     {
         if (string.IsNullOrWhiteSpace(metadataversion))
         {
             return null;
         }
 
-        if (string.IsNullOrWhiteSpace(target_framework))
+        if (target_framework is null
+            || string.IsNullOrWhiteSpace(target_framework))
         {
             var netfx = metadataversion.Split(new[] { 'v', '.' });
             return $"net{netfx[1]}{netfx[2]}";

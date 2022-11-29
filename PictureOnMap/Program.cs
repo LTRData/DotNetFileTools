@@ -146,7 +146,8 @@ public static class Program
             }
         }
 
-        var exepath = Process.GetCurrentProcess().MainModule.FileName;
+        var exepath = Process.GetCurrentProcess().MainModule?.FileName
+            ?? throw new InvalidOperationException("Unknown path to application file");
 
         var psinfo = new ProcessStartInfo
         {

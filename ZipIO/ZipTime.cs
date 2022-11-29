@@ -53,6 +53,7 @@ namespace ZipIO
                     {
                         directoryName = ".";
                     }
+
                     var directory = new DirectoryInfo(directoryName);
                     return directory.EnumerateFiles(Path.GetFileName(arg), search_options);
                 })

@@ -79,6 +79,7 @@ public static class ZipFreshen
                         {
                             dirname = ".";
                         }
+
                         var directory = new DirectoryInfo(dirname);
                         return directory.EnumerateFiles(Path.GetFileName(arg), SearchOption.TopDirectoryOnly);
                     }

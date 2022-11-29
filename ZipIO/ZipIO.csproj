@@ -5,14 +5,16 @@
     <TargetFrameworks>net6.0;net46</TargetFrameworks>
     <AssemblyName>ZipIO</AssemblyName>
     <OutputType>Exe</OutputType>
-    <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
-    <GenerateAssemblyDescriptionAttribute>false</GenerateAssemblyDescriptionAttribute>
-    <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
-    <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>
-    <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
-    <GenerateAssemblyCopyrightAttribute>false</GenerateAssemblyCopyrightAttribute>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <Company>LTR Data</Company>
+    <Authors>Olof Lagerkvist</Authors>
+    <Product>ZipIO</Product>
+    <WebPage>http://ltr-data.se</WebPage>
+  </PropertyGroup>
+  
   <ItemGroup>
     <Reference Include="System.IO.Compression" Condition="'$(TargetFramework)' == 'net46'" />
   </ItemGroup>

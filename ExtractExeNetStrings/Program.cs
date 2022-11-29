@@ -163,7 +163,7 @@ public static class Program
         }
     }
 
-    static string ReadUserString(BinaryReader r)
+    static string? ReadUserString(BinaryReader r)
     {
         int b = r.ReadByte();
 

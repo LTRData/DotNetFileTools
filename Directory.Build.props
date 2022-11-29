@@ -9,6 +9,7 @@
     <DelaySign>false</DelaySign>
     <RollForward>LatestMajor</RollForward>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <PropertyGroup>
