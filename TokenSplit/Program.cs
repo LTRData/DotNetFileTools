@@ -227,4 +227,31 @@ Done.");
 
         return true;
     }
+
+#if NETFRAMEWORK  // Legacy stuff for compatibility with .NET Framework 4.x
+    private static ValueTask WriteAsync(this Stream stream, ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        if (MemoryMarshal.TryGetArray(buffer, out var arraySegment))
+        {
+            return new(stream.WriteAsync(arraySegment.Array!, arraySegment.Offset, arraySegment.Count, cancellationToken));
+        }
+
+        return WriteUsingTemporaryArrayAsync(stream, buffer, cancellationToken);
+    }
+
+    private static async ValueTask WriteUsingTemporaryArrayAsync(Stream stream, ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+    {
+        var bytes = ArrayPool<byte>.Shared.Rent(buffer.Length);
+        try
+        {
+            buffer.CopyTo(bytes);
+            await stream.WriteAsync(bytes, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(bytes);
+        }
+    }
+#endif
+
 }

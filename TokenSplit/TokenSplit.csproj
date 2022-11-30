@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net6.0</TargetFrameworks>
+    <TargetFrameworks>net6.0;net48</TargetFrameworks>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -12,8 +12,9 @@
   </PropertyGroup>
   
   <ItemGroup>
+    <PackageReference Include="System.IO.Pipelines" Version="6.0.*" Condition="'$(TargetFramework)' == 'net48'" />
     <PackageReference Include="System.IO.Pipelines" Version="6.0.*" Condition="'$(TargetFramework)' == 'netcoreapp3.1'" />
-    <PackageReference Include="System.IO.Pipelines" Version="7.0.*" Condition="'$(TargetFramework)' != 'netcoreapp3.1'" />
+    <PackageReference Include="System.IO.Pipelines" Version="7.0.*" Condition="'$(TargetFramework)' == 'net6.0'" />
   </ItemGroup>
 
 </Project>
