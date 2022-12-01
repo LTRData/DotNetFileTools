@@ -60,9 +60,16 @@ public static class Program
                         var lon = pos.LongitudeToString(LatLonPosition.GeoFormat.Degrees);
                         var name = Path.GetFileName(path).Replace("_", "-");
 
-                        var uri = baseurl.Replace("{lat}", lat).Replace("{lon}", lon).Replace("{name}", name);
+                        var uri = baseurl.Replace("{lat}", lat)
+                                         .Replace("{lon}", lon)
+                                         .Replace("{name}", name);
 
-                        Process.Start(uri);
+                        var processStartInfo = new ProcessStartInfo(uri)
+                        {
+                            UseShellExecute = true
+                        };
+
+                        Process.Start(processStartInfo);
                     }
                 }
             }
