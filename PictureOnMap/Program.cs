@@ -91,7 +91,16 @@ public static class Program
             return;
         }
 
-        var asmpath = Assembly.GetExecutingAssembly().Location;
+#if NETFRAMEWORK
+        var asmpath = Assembly.GetExecutingAssembly()?.Location;
+#else
+        var asmpath = Environment.ProcessPath;
+#endif
+
+        if (asmpath is null)
+        {
+            throw new InvalidOperationException("Unkown application path");
+        }
 
         foreach (var basekey in new[] {
             @"HKEY_CLASSES_ROOT\SystemFileAssociations\.jpg\Shell",
