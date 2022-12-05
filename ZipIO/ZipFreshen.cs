@@ -34,6 +34,9 @@ public static class ZipFreshen
         Replace
     }
 
+    public static int FreshenOrReplace(FreshenOrReplaceOperation operation, params string[] args)
+        => FreshenOrReplace(operation, (IReadOnlyList<string>)args);
+
     public static int FreshenOrReplace(FreshenOrReplaceOperation operation, IReadOnlyList<string> args)
     {
         if (args is null || args.Count == 0)

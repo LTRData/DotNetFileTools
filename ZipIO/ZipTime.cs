@@ -4,120 +4,117 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 
-namespace ZipIO
+namespace ZipIO;
+
+public static class ZipTime
 {
-    public static class ZipTime
+    private readonly record struct Entry(string FileName, DateTime? LastWriteTime, Exception? Exception);
+
+    public static int Time(params string[] args)
+        => Time((IReadOnlyList<string>)args);
+
+    public static int Time(IEnumerable<string> args)
     {
-        private struct Entry
+        var modify_file_timestamps = false;
+        var search_options = SearchOption.TopDirectoryOnly;
+
+        if (args is null ||
+            !args.Any())
         {
-            public string FileName;
-            public DateTime? LastWriteTime;
-            public Exception Exception;
+            args = new[] { "/?" };
         }
 
-        public static int Time(IEnumerable<string> args)
-        {
-            var modify_file_timestamps = false;
-            var search_options = SearchOption.TopDirectoryOnly;
-
-            if (args is null ||
-                !args.Any())
+        var files = new List<string>();
+        foreach (var arg in args)
+            if (arg.Equals("/S", StringComparison.OrdinalIgnoreCase))
+                search_options = SearchOption.AllDirectories;
+            else if (arg.Equals("/M", StringComparison.OrdinalIgnoreCase))
+                modify_file_timestamps = true;
+            else if (arg.StartsWith("/", StringComparison.Ordinal))
             {
-                args = new[] { "/?" };
+                Console.WriteLine("Syntax:");
+                Console.WriteLine("ZipIO time [/S] [/M] file1 [file2]");
+                Console.WriteLine();
+                Console.WriteLine("/S   Search subdirectories.");
+                Console.WriteLine("/M   Modify - Set timestamp of zip files to newest timestamp of entries within");
+                Console.WriteLine("     the zip file.");
+                return -1;
             }
+            else
+                files.Add(arg);
 
-            var files = new List<string>();
-            foreach (var arg in args)
-                if (arg.Equals("/S", StringComparison.OrdinalIgnoreCase))
-                    search_options = SearchOption.AllDirectories;
-                else if (arg.Equals("/M", StringComparison.OrdinalIgnoreCase))
-                    modify_file_timestamps = true;
-                else if (arg.StartsWith("/", StringComparison.Ordinal))
+        var query = files
+            .SelectMany(arg =>
+            {
+                var directoryName = Path.GetDirectoryName(arg);
+                if (string.IsNullOrWhiteSpace(directoryName))
                 {
-                    Console.WriteLine("Syntax:");
-                    Console.WriteLine("ZipIO time [/S] [/M] file1 [file2]");
-                    Console.WriteLine();
-                    Console.WriteLine("/S   Search subdirectories.");
-                    Console.WriteLine("/M   Modify - Set timestamp of zip files to newest timestamp of entries within");
-                    Console.WriteLine("     the zip file.");
-                    return -1;
+                    directoryName = ".";
                 }
-                else
-                    files.Add(arg);
 
-            var query = files
-                .SelectMany(arg =>
+                var directory = new DirectoryInfo(directoryName);
+                return directory.EnumerateFiles(Path.GetFileName(arg), search_options);
+            })
+            .AsParallel()
+            .WithExecutionMode(ParallelExecutionMode.ForceParallelism)
+            .WithDegreeOfParallelism(Math.Min(Environment.ProcessorCount * 2, 64))
+            .Select(file =>
+            {
+                if (".zip".Equals(file.Extension, StringComparison.OrdinalIgnoreCase))
                 {
-                    var directoryName = Path.GetDirectoryName(arg);
-                    if (string.IsNullOrWhiteSpace(directoryName))
+                    try
                     {
-                        directoryName = ".";
-                    }
-
-                    var directory = new DirectoryInfo(directoryName);
-                    return directory.EnumerateFiles(Path.GetFileName(arg), search_options);
-                })
-                .AsParallel()
-                .WithExecutionMode(ParallelExecutionMode.ForceParallelism)
-                .WithDegreeOfParallelism(Math.Min(Environment.ProcessorCount * 2, 64))
-                .Select(file =>
-                {
-                    if (".zip".Equals(file.Extension, StringComparison.OrdinalIgnoreCase))
-                    {
-                        try
+                        DateTimeOffset newestFileTime;
+                        using (var zip = new ZipArchive(file.OpenRead(), ZipArchiveMode.Read))
                         {
-                            DateTimeOffset newestFileTime;
-                            using (var zip = new ZipArchive(file.OpenRead(), ZipArchiveMode.Read))
-                            {
-                                newestFileTime = zip.Entries.Max(entry => entry.LastWriteTime);
-                            }
-
-                            if (modify_file_timestamps)
-                            {
-                                file.LastWriteTimeUtc = newestFileTime.UtcDateTime;
-                            }
-                            else
-                            {
-                                return new Entry
-                                {
-                                    FileName = file.FullName,
-                                    LastWriteTime = newestFileTime.LocalDateTime
-                                };
-                            }
+                            newestFileTime = zip.Entries.Max(entry => entry.LastWriteTime);
                         }
-                        catch (Exception ex)
+
+                        if (modify_file_timestamps)
+                        {
+                            file.LastWriteTimeUtc = newestFileTime.UtcDateTime;
+                        }
+                        else
                         {
                             return new Entry
                             {
                                 FileName = file.FullName,
-                                Exception = ex
+                                LastWriteTime = newestFileTime.LocalDateTime
                             };
                         }
                     }
-
-                    return new Entry
+                    catch (Exception ex)
                     {
-                        FileName = file.FullName,
-                        LastWriteTime = file.LastWriteTime
-                    };
-                })
-                .OrderByDescending(entry => entry.LastWriteTime);
+                        return new Entry
+                        {
+                            FileName = file.FullName,
+                            Exception = ex
+                        };
+                    }
+                }
 
-            foreach (var entry in query)
+                return new Entry
+                {
+                    FileName = file.FullName,
+                    LastWriteTime = file.LastWriteTime
+                };
+            })
+            .OrderByDescending(entry => entry.LastWriteTime);
+
+        foreach (var entry in query)
+        {
+            Console.Write(entry.FileName);
+            Console.Write(" - ");
+            if (entry.Exception is not null)
             {
-                Console.Write(entry.FileName);
-                Console.Write(" - ");
-                if (entry.Exception is not null)
-                {
-                    Console.WriteLine(entry.Exception.GetBaseException().Message);
-                }
-                else
-                {
-                    Console.WriteLine(entry.LastWriteTime.ToString());
-                }
+                Console.WriteLine(entry.Exception.GetBaseException().Message);
             }
-
-            return 0;
+            else
+            {
+                Console.WriteLine(entry.LastWriteTime.ToString());
+            }
         }
+
+        return 0;
     }
 }

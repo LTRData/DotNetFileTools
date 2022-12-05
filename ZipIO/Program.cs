@@ -127,6 +127,9 @@ public static class Program
             .Select(entry => Path.Combine(dir, entry.Substring(prefix_length)));
     }
 
+    public static int ZipAdd(params string[] args)
+        => ZipAdd((IReadOnlyList<string>)args);
+
     public static int ZipAdd(IReadOnlyList<string> args)
     {
         try
@@ -235,6 +238,9 @@ public static class Program
         return 0;
     }
 
+    public static int ZipDel(params string[] args)
+        => ZipDel((IReadOnlyList<string>)args);
+
     public static int ZipDel(IReadOnlyList<string> args)
     {
         try
@@ -261,6 +267,9 @@ public static class Program
         return 0;
     }
 
+    public static int ZipFromDir(params string[] args)
+        => ZipFromDir((IReadOnlyList<string>)args);
+
     public static int ZipFromDir(IReadOnlyList<string> args)
     {
         if (args.Count != 2)
@@ -283,6 +292,9 @@ public static class Program
 
         return 0;
     }
+
+    public static int ZipToDir(params string[] args)
+        => ZipToDir((IReadOnlyList<string>)args);
 
     public static int ZipToDir(IReadOnlyList<string> args)
     {
