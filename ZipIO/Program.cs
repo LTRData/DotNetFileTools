@@ -187,7 +187,9 @@ public static class Program
 
                 if (entry is null)
                 {
-                    Console.WriteLine(file);
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"Adding: {file}");
+                    Console.ResetColor();
 
                     entry = archive.CreateEntry(file, CompressionLevel.Optimal);
 
@@ -200,7 +202,9 @@ public static class Program
                 else if (!newer ||
                     (lastWriteTimeUtc - entry.LastWriteTime.UtcDateTime).TotalSeconds > 2)
                 {
-                    Console.WriteLine(file);
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"Updating: {file}");
+                    Console.ResetColor();
 
                     using var entryStream = entry.Open();
                     source.CopyTo(entryStream);
@@ -223,7 +227,9 @@ public static class Program
 
                 foreach (var entry in to_be_removed)
                 {
+                    Console.ForegroundColor = ConsoleColor.Magenta;
                     Console.WriteLine($"Removing '{entry.FullName}'");
+                    Console.ResetColor();
                     entry.Delete();
                 }
             }

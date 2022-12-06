@@ -107,7 +107,9 @@ public static class ZipTime
             Console.Write(" - ");
             if (entry.Exception is not null)
             {
-                Console.WriteLine(entry.Exception.GetBaseException().Message);
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine(entry.Exception.GetBaseException().Message);
+                Console.ResetColor();
             }
             else
             {

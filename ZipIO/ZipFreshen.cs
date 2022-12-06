@@ -13,19 +13,11 @@ namespace ZipIO;
 public static class ZipFreshen
 {
     [MethodImpl(MethodImplOptions.Synchronized)]
-    static void WriteConsole(TextWriter writer, string message)
+    static void WriteConsole(TextWriter writer, ConsoleColor color, string message)
     {
-        if (ReferenceEquals(writer, Console.Error))
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-        }
-
+        Console.ForegroundColor = color;
         writer.WriteLine(message);
-
-        if (ReferenceEquals(writer, Console.Error))
-        {
-            Console.ResetColor();
-        }
+        Console.ResetColor();
     }
 
     public enum FreshenOrReplaceOperation
@@ -88,7 +80,7 @@ public static class ZipFreshen
                     }
                     catch (Exception ex)
                     {
-                        WriteConsole(Console.Error, $"{arg}: {ex.GetBaseException().Message}");
+                        WriteConsole(Console.Error, ConsoleColor.Red, $"{arg}: {ex.GetBaseException().Message}");
 
                         return Enumerable.Empty<FileInfo>();
                     }
@@ -135,13 +127,13 @@ public static class ZipFreshen
                                 }
                                 else
                                 {
-                                    WriteConsole(Console.Error, $"Cannot find '{Path.Combine(file.FullName, entry.zipEntryFullName)}'");
+                                    WriteConsole(Console.Error, ConsoleColor.Red, $"Cannot find '{Path.Combine(file.FullName, entry.zipEntryFullName)}'");
                                 }
 
                                 continue;
                             }
 
-                            WriteConsole(Console.Out, Path.Combine(file.FullName, entry.zipEntryFullName));
+                            WriteConsole(Console.Out, ConsoleColor.Cyan, Path.Combine(file.FullName, entry.zipEntryFullName));
 
                             try
                             {
@@ -162,18 +154,18 @@ public static class ZipFreshen
 
                         foreach (var entry in to_be_removed)
                         {
-                            WriteConsole(Console.Out, $"Removing '{Path.Combine(file.FullName, entry.FullName)}'");
+                            WriteConsole(Console.Out, ConsoleColor.Magenta, $"Removing: {Path.Combine(file.FullName, entry.FullName)}");
                             entry.Delete();
                         }
                     }
                     catch (Exception ex)
                     {
 #if DEBUG
-                            WriteConsole(Console.Error, $"{file.FullName}: {ex}");
+                            WriteConsole(Console.Error, ConsoleColor.Red, $"{file.FullName}: {ex}");
 #else
-                            WriteConsole(Console.Error, $"{file.FullName}: {ex.JoinMessages()}");
+                            WriteConsole(Console.Error, ConsoleColor.Red, $"{file.FullName}: {ex.JoinMessages()}");
 #endif
-                        }
+                    }
 
                     if (!modified)
                     {
@@ -185,7 +177,7 @@ public static class ZipFreshen
         }
         catch (Exception ex)
         {
-            WriteConsole(Console.Error, ex.GetBaseException().Message);
+            WriteConsole(Console.Error, ConsoleColor.Red, ex.GetBaseException().Message);
             return 1;
         }
     }
