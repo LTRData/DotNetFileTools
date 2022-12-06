@@ -1,4 +1,6 @@
-﻿using System;
+﻿using LTRLib.Extensions;
+using LTRLib.LTRGeneric;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -27,39 +29,50 @@ public static class ZipFreshen
     }
 
     public static int FreshenOrReplace(FreshenOrReplaceOperation operation, params string[] args)
-        => FreshenOrReplace(operation, (IReadOnlyList<string>)args);
+        => FreshenOrReplace(operation, (IEnumerable<string>)args);
 
-    public static int FreshenOrReplace(FreshenOrReplaceOperation operation, IReadOnlyList<string> args)
+    public static int FreshenOrReplace(FreshenOrReplaceOperation operation, IEnumerable<string> cmdLine)
     {
-        if (args is null || args.Count == 0)
-        {
-            args = new[] { "/?" };
-        }
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
-        var files = new List<string>();
+        string[]? files = null;
         var source_directory = string.Empty;
         var purge = false;
 
-        foreach (var arg in args)
+        foreach (var arg in cmd)
         {
-            if (arg.StartsWith("/SOURCE=", StringComparison.OrdinalIgnoreCase))
+            if (arg.Key.Equals("source", StringComparison.OrdinalIgnoreCase))
             {
-                source_directory = arg.Substring("/SOURCE=".Length);
+                source_directory = arg.Value.FirstOrDefault();
             }
-            else if (arg.Equals("/PURGE", StringComparison.OrdinalIgnoreCase))
+            else if (arg.Key.Equals("purge", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("p", StringComparison.OrdinalIgnoreCase))
             {
                 purge = true;
             }
-            else if (arg.StartsWith("/", StringComparison.Ordinal))
+            else if (arg.Key == "")
             {
-                Console.WriteLine("Syntax:");
-                Console.WriteLine("ZipIO freshen /SOURCE=sourcedirectory [/PURGE] [zipfile1 [zipfile2 ...]]");
-                return -1;
+                files = arg.Value;
             }
             else
             {
-                files.Add(arg);
+                Console.WriteLine(@"Syntax:
+zipio freshen --source=sourcedirectory [--purge] [zipfile1 [zipfile2 ...]]
+
+Updates existing files in archive with newer files found on disk in directory
+specified in --source switch.
+
+-p
+--purge     Remove files in archive that are not found on disk.
+");
+                return -1;
             }
+        }
+
+        if (files is null || files.Length == 0)
+        {
+            Console.Error.WriteLine("Missing zip file paths");
+            return 0;
         }
 
         try

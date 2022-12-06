@@ -1,4 +1,5 @@
-﻿using System;
+﻿using LTRLib.LTRGeneric;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -11,37 +12,58 @@ public static class ZipTime
     private readonly record struct Entry(string FileName, DateTime? LastWriteTime, Exception? Exception);
 
     public static int Time(params string[] args)
-        => Time((IReadOnlyList<string>)args);
+        => Time((IEnumerable<string>)args);
 
-    public static int Time(IEnumerable<string> args)
+    public static int Time(IEnumerable<string> cmdLine)
     {
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+
         var modify_file_timestamps = false;
         var search_options = SearchOption.TopDirectoryOnly;
 
-        if (args is null ||
-            !args.Any())
+        string[]? files = null;
+        
+        foreach (var arg in cmd)
         {
-            args = new[] { "/?" };
-        }
-
-        var files = new List<string>();
-        foreach (var arg in args)
-            if (arg.Equals("/S", StringComparison.OrdinalIgnoreCase))
-                search_options = SearchOption.AllDirectories;
-            else if (arg.Equals("/M", StringComparison.OrdinalIgnoreCase))
-                modify_file_timestamps = true;
-            else if (arg.StartsWith("/", StringComparison.Ordinal))
+            if (arg.Key.Equals("s", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("r", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("recurse", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine("Syntax:");
-                Console.WriteLine("ZipIO time [/S] [/M] file1 [file2]");
-                Console.WriteLine();
-                Console.WriteLine("/S   Search subdirectories.");
-                Console.WriteLine("/M   Modify - Set timestamp of zip files to newest timestamp of entries within");
-                Console.WriteLine("     the zip file.");
-                return -1;
+                search_options = SearchOption.AllDirectories;
+            }
+            else if (arg.Key.Equals("m", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("modify", StringComparison.OrdinalIgnoreCase))
+            {
+                modify_file_timestamps = true;
+            }
+            else if (arg.Key == "")
+            {
+                files = arg.Value;
             }
             else
-                files.Add(arg);
+            {
+                Console.WriteLine(@"Syntax:
+zipio time [-s] [--modify] file1 [file2]
+
+Modifies timestamp on zip archive file to match newest file within archive.
+
+-s
+-r
+--recurse   Search subdirectories
+
+-m
+--modify    Modify - Set timestamp of zip files to newest timestamp of entries within
+            the zip file
+");
+                return -1;
+            }
+        }
+
+        if (files is null || files.Length == 0)
+        {
+            Console.Error.WriteLine("Missing zip file paths");
+            return 0;
+        }
 
         var query = files
             .SelectMany(arg =>

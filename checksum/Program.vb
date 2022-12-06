@@ -3,6 +3,7 @@ Imports System.Reflection
 Imports System.Security.Cryptography
 Imports System.Text
 Imports System.Threading
+Imports LTRLib.LTRGeneric
 
 Public Module Program
 
@@ -27,71 +28,75 @@ Public Module Program
 
     End Sub
 
-    Public Sub UnsafeMain(ParamArray args As String())
+    Public Sub UnsafeMain(ParamArray cmdLine As String())
 
-        If args.Length = 0 OrElse Array.Exists(args, AddressOf "/?".Equals) Then
-            Console.WriteLine("Generic .NET checksum calculation tool.")
-            Console.WriteLine("Copyright (c) 2012-2021, Olof Lagerkvist, LTR Data.")
-            Console.WriteLine("http://www.ltr-data.se/opencode.html")
-            Console.WriteLine()
-            Console.WriteLine("Syntax:")
-            Console.WriteLine()
-            Console.WriteLine("checksum [/X:assembly] [/S] [/A:algorithm] [/K:key] file1")
-            Console.WriteLine("        [[/A:algorithm] [/K:key] [/C] file2 ...]")
-            Console.WriteLine()
-            Console.WriteLine("checksum [/X:assembly] /L")
-            Console.WriteLine()
-            Console.WriteLine("/X      Specify name and path to assembly file to search for hash algorithms.")
-            Console.WriteLine()
-            Console.WriteLine("/S      Search subdirectories for files to hash.")
-            Console.WriteLine()
-            Console.WriteLine("/A      Specifies algorithm. Can be any .NET supported hashing algorithm, such")
-            Console.WriteLine("        as MD5, SHA1 or RIPEMD160.")
-            Console.WriteLine()
-            Console.WriteLine("/K      For HMAC shared-key hash providers, specifies secret key for checksum.")
-            Console.WriteLine()
-            Console.WriteLine("/C      Output in C/C++/C# code format.")
-            Console.WriteLine()
-            Console.WriteLine("/L      Lists available hash algorithms.")
-            Console.WriteLine()
-            Return
-        End If
+        Dim cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase)
 
         Dim alg = "md5"
         Dim key As String = Nothing
         Dim search_option = SearchOption.TopDirectoryOnly
-        Dim value = False
         Dim output_code = False
 
         Dim threads As New List(Of Thread)
 
-        For Each arg In args
+        For Each arg In cmd
 
-            If arg.Equals("/L", StringComparison.OrdinalIgnoreCase) Then
+            If arg.Key.Equals("x", StringComparison.OrdinalIgnoreCase) Then
+                For Each asmfile In arg.Value
+                    Dim asmname = AssemblyName.GetAssemblyName(asmfile)
+                    Assembly.Load(asmname)
+                Next
+            ElseIf arg.Key.Equals("l", StringComparison.OrdinalIgnoreCase) Then
                 ListHashProviders()
-            ElseIf arg.StartsWith("/X:", StringComparison.OrdinalIgnoreCase) Then
-                Dim asmfile = arg.Substring("/X:".Length)
-                Dim asmname = AssemblyName.GetAssemblyName(asmfile)
-                Assembly.Load(asmname)
-            ElseIf arg.StartsWith("/A:", StringComparison.OrdinalIgnoreCase) Then
-                alg = arg.Substring("/A:".Length)
-            ElseIf arg.StartsWith("/K:", StringComparison.OrdinalIgnoreCase) Then
-                key = arg.Substring("/K:".Length)
-            ElseIf arg.Equals("/S", StringComparison.OrdinalIgnoreCase) Then
+            ElseIf arg.Key.Equals("a", StringComparison.OrdinalIgnoreCase) Then
+                alg = arg.Value.Single()
+            ElseIf arg.Key.Equals("k", StringComparison.OrdinalIgnoreCase) Then
+                key = arg.Value.SingleOrDefault()
+            ElseIf arg.Key.Equals("s", StringComparison.OrdinalIgnoreCase) Then
                 search_option = SearchOption.AllDirectories
-            ElseIf arg.StartsWith("/V:", StringComparison.OrdinalIgnoreCase) Then
-                Dim valuestr = Encoding.UTF8.GetBytes(arg.Substring("/V:".Length))
-                PrintCheckSumForData(alg, key, output_code, valuestr)
-            ElseIf arg.Equals("/V", StringComparison.OrdinalIgnoreCase) Then
-                value = True
-            ElseIf arg.Equals("/C", StringComparison.OrdinalIgnoreCase) Then
+            ElseIf arg.Key.Equals("c", StringComparison.OrdinalIgnoreCase) Then
                 output_code = True
-            ElseIf value Then
-                Dim valuestr = Encoding.UTF8.GetBytes(arg)
-                PrintCheckSumForData(alg, key, output_code, valuestr)
+            ElseIf arg.Key.Equals("v", StringComparison.OrdinalIgnoreCase) Then
+                For Each valuestr In arg.Value.Concat(cmd(""))
+                    Dim valuebytes = Encoding.UTF8.GetBytes(valuestr)
+                    PrintCheckSumForData(alg, key, output_code, valuebytes)
+                Next
+            ElseIf arg.Key.Equals("", StringComparison.Ordinal) Then
+                For Each file In arg.Value
+                    Dim thread = PrintCheckSumForFilesThread(alg, key, file, output_code, search_option)
+                    threads.Add(thread)
+                Next
             Else
-                Dim thread = PrintCheckSumForFilesThread(alg, key, arg, output_code, search_option)
-                threads.Add(thread)
+
+                Console.WriteLine("Generic .NET checksum calculation tool.
+Copyright (c) 2012-2022, Olof Lagerkvist, LTR Data.
+http://ltr-data.se/opencode.html
+
+Syntax for calculating hash of file data:
+checksum [-x:assembly] [-s] [-a:algorithm] [-k:key] file1 [file2 ...]
+
+Syntax for calculating hash of UTF8 bytes of a string:
+checksum [-x:assembly] [-s] [-a:algorithm] [-k:key] -v:string
+
+List available hash algorithms:
+checksum [-x:assembly] -l
+
+-x      Specify name and path to assembly file to search for hash algorithms.
+
+-s      Search subdirectories for files to hash.
+
+-a      Specifies algorithm. Can be any .NET supported hashing algorithm, such
+        as MD5, SHA1 or RIPEMD160.
+
+-k      For HMAC shared-key hash providers, specifies secret key for checksum.
+
+-c      Output in C/C++/C# code format.
+
+-l      Lists available hash algorithms.
+")
+
+                Return
+
             End If
 
         Next

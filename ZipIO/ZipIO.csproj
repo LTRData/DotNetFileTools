@@ -18,5 +18,9 @@
   <ItemGroup>
     <Reference Include="System.IO.Compression" Condition="'$(TargetFramework)' == 'net46'" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LTRLib40" Version="*" />
+  </ItemGroup>
   
 </Project>

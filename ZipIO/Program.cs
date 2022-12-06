@@ -1,4 +1,7 @@
-﻿using System;
+﻿using LTRLib.Extensions;
+using LTRLib.IO;
+using LTRLib.LTRGeneric;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -16,8 +19,12 @@ public static class Program
     {
         if (args is null || args.Length < 2)
         {
-            Console.Error.WriteLine("Syntax:");
-            Console.Error.WriteLine("ZipIO add|list|del|fromdir|todir|freshen|time [switches] zipfile [args ...]");
+            Console.Error.WriteLine(@"Syntax:
+zipio add|list|del|fromdir|todir|freshen|time [switches] zipfile [args ...]
+
+More syntax help is available using 'zipio command --help', for example:
+zipio add --help
+");
             return -1;
         }
 
@@ -49,13 +56,43 @@ public static class Program
         return -1;
     }
 
-    static int ZipList(IEnumerable<string> args)
+    public static int ZipList(params string[] args)
+        => ZipList((IEnumerable<string>)args);
+
+    public static int ZipList(IEnumerable<string> cmdLine)
     {
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+
         var longlisting = false;
-        if ("/L".Equals(args.FirstOrDefault(), StringComparison.OrdinalIgnoreCase))
+        foreach (var arg in cmd)
         {
-            args = args.Skip(1);
-            longlisting = true;
+            if (arg.Key.Equals("l", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("long", StringComparison.OrdinalIgnoreCase))
+            {
+                longlisting = true;
+            }
+            else if (arg.Key == "")
+            {
+            }
+            else
+            {
+                Console.WriteLine(@"Syntax:
+zipio list [--long] zipfile1 [zipfile2 ...]
+
+Show contents of zip archive.
+
+-l
+--long      Detailed file information
+");
+
+                return -1;
+            }
+        }
+
+        if (!cmd.TryGetValue("", out var args) || args.Length == 0)
+        {
+            Console.WriteLine("Missing zip file paths.");
+            return 0;
         }
 
         foreach (var arg in args.SelectMany(path =>
@@ -128,53 +165,82 @@ public static class Program
     }
 
     public static int ZipAdd(params string[] args)
-        => ZipAdd((IReadOnlyList<string>)args);
+        => ZipAdd((IEnumerable<string>)args);
 
-    public static int ZipAdd(IReadOnlyList<string> args)
+    public static int ZipAdd(IEnumerable<string> cmdLine)
     {
         try
         {
-            if (args.Count == 0 || args[0].Equals("/?", StringComparison.Ordinal))
-            {
-                Console.Error.WriteLine("Syntax: zipio add [/S] [/NEWER] [/PURGE] [/CONTINUE] file.zip [files ...]");
-                return 0;
-            }
+            var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
             string? zip_path = null;
-            var files_to_add = new List<string>();
+            IEnumerable<string>? files_to_add = null;
             var searchOption = SearchOption.TopDirectoryOnly;
             var purge = false;
             var newer = false;
             var cont = false;
-            foreach (var arg in args)
+
+            foreach (var arg in cmd)
             {
-                if (arg.Equals("/S", StringComparison.OrdinalIgnoreCase))
+                if (arg.Key.Equals("s", StringComparison.OrdinalIgnoreCase)
+                    || arg.Key.Equals("r", StringComparison.OrdinalIgnoreCase)
+                    || arg.Key.Equals("recurse", StringComparison.OrdinalIgnoreCase))
                 {
                     searchOption = SearchOption.AllDirectories;
                 }
-                else if (arg.Equals("/NEWER", StringComparison.OrdinalIgnoreCase))
+                else if (arg.Key.Equals("newer", StringComparison.OrdinalIgnoreCase)
+                    || arg.Key.Equals("n", StringComparison.OrdinalIgnoreCase))
                 {
                     newer = true;
                 }
-                else if (arg.Equals("/PURGE", StringComparison.OrdinalIgnoreCase))
+                else if (arg.Key.Equals("purge", StringComparison.OrdinalIgnoreCase)
+                    || arg.Key.Equals("p", StringComparison.OrdinalIgnoreCase))
                 {
                     purge = true;
                 }
-                else if (arg.Equals("/CONTINUE", StringComparison.OrdinalIgnoreCase))
+                else if (arg.Key.Equals("continue", StringComparison.OrdinalIgnoreCase)
+                    || arg.Key.Equals("c", StringComparison.OrdinalIgnoreCase))
                 {
                     cont = true;
                 }
-                else if (zip_path is null)
+                else if (arg.Key == "")
                 {
-                    zip_path = arg;
+                    zip_path = arg.Value.FirstOrDefault();
+                    files_to_add = arg.Value.Skip(1);
                 }
                 else
                 {
-                    files_to_add.Add(arg);
+                    Console.Error.WriteLine(@"Syntax:
+zipio add [-s] [--newer] [--purge] [--continue] file.zip [files ...]
+
+Add files to zip archive.
+
+-s
+-r
+--recurse   Recurse into subdirectories.
+
+-n
+--newer     Only files newer than existing files in archive, or files that do
+            not already exist in archive.
+
+-p
+--purge     Remove existing files in archive that are not found on disk
+
+-c
+--continue  Continue on source file read errors
+");
+
+                    return 0;
                 }
             }
 
-            using var archive = ZipFile.Open(zip_path!, ZipArchiveMode.Update);
+            if (zip_path is null || files_to_add is null)
+            {
+                Console.Error.WriteLine("Missing zip file path and source file names");
+                return 0;
+            }
+
+            using var archive = ZipFile.Open(zip_path, ZipArchiveMode.Update);
 
             var existing_files = new List<string>();
 
@@ -259,13 +325,36 @@ public static class Program
     }
 
     public static int ZipDel(params string[] args)
-        => ZipDel((IReadOnlyList<string>)args);
+        => ZipDel((IEnumerable<string>)args);
 
-    public static int ZipDel(IReadOnlyList<string> args)
+    public static int ZipDel(IEnumerable<string> cmdLine)
     {
         try
         {
+            var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var arg in cmd)
+            {
+                if (arg.Key != "")
+                {
+                    Console.WriteLine(@"Syntax:
+zipio del zipfile file1 [file2 ...]
+
+Deletes files from zip archive.
+");
+
+                    return -1;
+                }
+            }
+
+            if (!cmd.TryGetValue("", out var args) || args.Length < 2)
+            {
+                Console.WriteLine("Missing zip archive path or file names.");
+                return 0;
+            }
+
             using var archive = ZipFile.Open(args[0], ZipArchiveMode.Update);
+            
             var entries = archive
                 .Entries
                 .Where(e => args.Skip(1).Any(a => Regex.IsMatch(e.FullName, a, RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace)))
@@ -288,15 +377,30 @@ public static class Program
     }
 
     public static int ZipFromDir(params string[] args)
-        => ZipFromDir((IReadOnlyList<string>)args);
+        => ZipFromDir((IEnumerable<string>)args);
 
-    public static int ZipFromDir(IReadOnlyList<string> args)
+    public static int ZipFromDir(IEnumerable<string> cmdLine)
     {
-        if (args.Count != 2)
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var arg in cmd)
         {
-            Console.Error.WriteLine("Syntax:");
-            Console.Error.WriteLine("ZipIO fromdir zipfile directory");
-            return -1;
+            if (arg.Key != "")
+            {
+                Console.Error.WriteLine(@"Syntax:
+zipio fromdir zipfile directory
+
+Create a zip archive from directory contents.
+");
+
+                return -1;
+            }
+        }
+
+        if (!cmd.TryGetValue("", out var args) || args.Length != 2)
+        {
+            Console.WriteLine("Missing zip archive or directory path.");
+            return 0;
         }
 
         try
@@ -314,15 +418,30 @@ public static class Program
     }
 
     public static int ZipToDir(params string[] args)
-        => ZipToDir((IReadOnlyList<string>)args);
+        => ZipToDir((IEnumerable<string>)args);
 
-    public static int ZipToDir(IReadOnlyList<string> args)
+    public static int ZipToDir(IEnumerable<string> cmdLine)
     {
-        if (args.Count != 2)
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var arg in cmd)
         {
-            Console.Error.WriteLine("Syntax:");
-            Console.Error.WriteLine("ZipIO todir zipfile directory");
-            return -1;
+            if (arg.Key != "")
+            {
+                Console.Error.WriteLine(@"Syntax:
+zipio todir zipfile directory
+
+Extract contents of zip archive to a directory.
+");
+
+                return -1;
+            }
+        }
+
+        if (!cmd.TryGetValue("", out var args) || args.Length != 2)
+        {
+            Console.WriteLine("Missing zip archive or directory path.");
+            return 0;
         }
 
         try
@@ -337,17 +456,5 @@ public static class Program
         }
 
         return 0;
-    }
-
-    internal static string JoinMessages(this Exception ex) =>
-        string.Join(" -> ", ex.Enumerate().Select(e => e.Message));
-
-    internal static IEnumerable<Exception> Enumerate(this Exception? ex)
-    {
-        while (ex is not null)
-        {
-            yield return ex;
-            ex = ex.InnerException;
-        }
     }
 }
