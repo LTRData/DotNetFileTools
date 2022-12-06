@@ -13,7 +13,13 @@ Public Module Program
 #If DEBUG Then
             Trace.WriteLine(ex.ToString())
 #End If
-            Console.WriteLine(ex.GetBaseException().Message)
+            Console.ForegroundColor = ConsoleColor.Red
+            Console.WriteLine("Exception:")
+            While ex IsNot Nothing
+                Console.WriteLine(ex.Message)
+                ex = ex.InnerException
+            End While
+            Console.ResetColor()
 
         End Try
 
@@ -43,7 +49,8 @@ Public Module Program
         Next
 
         If ShowHelp Then
-            Console.Error.WriteLine($"Syntax:{Environment.NewLine}NetCompress [-d] [-m:GZip|Deflate] [-b:buffersize] [-a:assembly]")
+            Console.Error.WriteLine($"Syntax:
+NetCompress [-d] [-m:GZip|Deflate] [-b:buffersize] [-a:assembly]")
             Return
         End If
 
@@ -59,10 +66,15 @@ Public Module Program
                 AssemblyForType = Assembly.Load(AssemblyName.GetAssemblyName(AssemblyFile))
             End If
 
-            Dim MethodType = AssemblyForType.GetType($"System.IO.Compression.{MethodName}Stream", throwOnError:=False, ignoreCase:=True)
+            Dim typeName = $"System.IO.Compression.{MethodName}Stream"
 
-            If MethodType Is Nothing Then
-                Console.Error.WriteLine($"Method {MethodName} not supported.")
+            Dim MethodType = AssemblyForType.GetType(typeName, throwOnError:=False, ignoreCase:=True)
+
+            If MethodType Is Nothing OrElse
+                MethodType.IsAbstract OrElse
+                Not GetType(Stream).IsAssignableFrom(MethodType) Then
+
+                Console.Error.WriteLine($"Class {typeName} not found in '{AssemblyForType.FullName}'.")
                 Return
             End If
 

@@ -15,8 +15,13 @@ Public Module Program
 #If DEBUG Then
             Trace.WriteLine(ex.ToString())
 #End If
+            Console.ForegroundColor = ConsoleColor.Red
             Console.WriteLine("Exception:")
-            Console.WriteLine(ex.Message)
+            While ex IsNot Nothing
+                Console.WriteLine(ex.Message)
+                ex = ex.InnerException
+            End While
+            Console.ResetColor()
 
         End Try
 
@@ -226,12 +231,19 @@ Public Module Program
                     dir = "."
                 End If
 
+                Dim found = False
+
                 For Each filename In Directory.GetFiles(dir, filepart, search_option)
+                    found = True
                     If filename.StartsWith(".\", StringComparison.Ordinal) Then
                         filename = filename.Substring(2)
                     End If
                     PrintCheckSumForFile(alg, key, filename, output_code)
                 Next
+
+                If Not found Then
+                    Console.Error.WriteLine($"File '{filename_pattern}' not found")
+                End If
 
             End If
 

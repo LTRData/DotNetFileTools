@@ -56,6 +56,11 @@ public static class Program
 
                         var pos = GeoLocators.GetImageGeoLocation(picUri);
 
+                        if (pos is null)
+                        {
+                            throw new InvalidOperationException($"The image '{picUri}' does not contain a position");
+                        }
+
                         var lat = pos.LatitudeToString(LatLonPosition.GeoFormat.Degrees);
                         var lon = pos.LongitudeToString(LatLonPosition.GeoFormat.Degrees);
                         var name = Path.GetFileName(path).Replace("_", "-");

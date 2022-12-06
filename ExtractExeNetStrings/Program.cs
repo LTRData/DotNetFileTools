@@ -46,8 +46,6 @@ public static class Program
             }
             while (r.ReadUInt32() != 0x424A5342);        // seek to magic
 
-
-
             var pos = r.BaseStream.Position;
 
             using var en = ReadAllUserStringsFromMetadata(r).GetEnumerator();
