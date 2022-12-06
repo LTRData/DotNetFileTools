@@ -136,7 +136,7 @@ public static class Program
         {
             if (args.Count == 0 || args[0].Equals("/?", StringComparison.Ordinal))
             {
-                Console.Error.WriteLine("Syntax: zipio add [/S] [/NEWER] [/PURGE] file.zip [files ...]");
+                Console.Error.WriteLine("Syntax: zipio add [/S] [/NEWER] [/PURGE] [/CONTINUE] file.zip [files ...]");
                 return 0;
             }
 
@@ -145,6 +145,7 @@ public static class Program
             var searchOption = SearchOption.TopDirectoryOnly;
             var purge = false;
             var newer = false;
+            var cont = false;
             foreach (var arg in args)
             {
                 if (arg.Equals("/S", StringComparison.OrdinalIgnoreCase))
@@ -158,6 +159,10 @@ public static class Program
                 else if (arg.Equals("/PURGE", StringComparison.OrdinalIgnoreCase))
                 {
                     purge = true;
+                }
+                else if (arg.Equals("/CONTINUE", StringComparison.OrdinalIgnoreCase))
+                {
+                    cont = true;
                 }
                 else if (zip_path is null)
                 {
@@ -175,47 +180,56 @@ public static class Program
 
             foreach (var file in files_to_add.SelectMany(path => ResolveWildcards(path, searchOption)))
             {
-                var fileinfo = new FileInfo(file);
-
-                using var source = fileinfo.OpenRead();
-
-                var entry = archive
-                    .Entries
-                    .FirstOrDefault(e => e.FullName.Equals(file, StringComparison.CurrentCultureIgnoreCase));
-
-                var lastWriteTimeUtc = fileinfo.LastWriteTimeUtc;
-
-                if (entry is null)
+                try
                 {
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"Adding: {file}");
-                    Console.ResetColor();
+                    var fileinfo = new FileInfo(file);
 
-                    entry = archive.CreateEntry(file, CompressionLevel.Optimal);
+                    using var source = fileinfo.OpenRead();
 
-                    using var entryStream = entry.Open();
-                    source.CopyTo(entryStream);
-                    entryStream.SetLength(source.Length);
+                    var entry = archive
+                        .Entries
+                        .FirstOrDefault(e => e.FullName.Equals(file, StringComparison.CurrentCultureIgnoreCase));
 
-                    entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
+                    var lastWriteTimeUtc = fileinfo.LastWriteTimeUtc;
+
+                    if (entry is null)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"Adding: {file}");
+                        Console.ResetColor();
+
+                        entry = archive.CreateEntry(file, CompressionLevel.Optimal);
+
+                        using var entryStream = entry.Open();
+                        source.CopyTo(entryStream);
+                        entryStream.SetLength(source.Length);
+
+                        entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
+                    }
+                    else if (!newer ||
+                        (lastWriteTimeUtc - entry.LastWriteTime.UtcDateTime).TotalSeconds > 2)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.WriteLine($"Updating: {file}");
+                        Console.ResetColor();
+
+                        using var entryStream = entry.Open();
+                        source.CopyTo(entryStream);
+                        entryStream.SetLength(source.Length);
+
+                        entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
+                    }
+
+                    if (purge && entry is not null)
+                    {
+                        existing_files.Add(entry.FullName);
+                    }
                 }
-                else if (!newer ||
-                    (lastWriteTimeUtc - entry.LastWriteTime.UtcDateTime).TotalSeconds > 2)
+                catch (Exception ex) when (cont)
                 {
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine($"Updating: {file}");
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.Error.WriteLine($"File '{file}': {ex.JoinMessages()}");
                     Console.ResetColor();
-
-                    using var entryStream = entry.Open();
-                    source.CopyTo(entryStream);
-                    entryStream.SetLength(source.Length);
-
-                    entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
-                }
-
-                if (purge && entry is not null)
-                {
-                    existing_files.Add(entry.FullName);
                 }
             }
 
