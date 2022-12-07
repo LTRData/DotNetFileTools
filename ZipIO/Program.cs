@@ -28,32 +28,122 @@ zipio add --help
             return -1;
         }
 
-        var sub_args = new List<string>(args.Skip(1));
-
-        switch (args[0].ToLowerInvariant())
+        try
         {
-            case "add":
-                return ZipAdd(sub_args);
-            case "list":
-                return ZipList(sub_args);
-            case "del":
-                return ZipDel(sub_args);
-            case "fromdir":
-                return ZipFromDir(sub_args);
-            case "todir":
-                return ZipToDir(sub_args);
-            case "replace":
-                return ZipFreshen.FreshenOrReplace(ZipFreshen.FreshenOrReplaceOperation.Replace, sub_args);
-            case "freshen":
-                return ZipFreshen.FreshenOrReplace(ZipFreshen.FreshenOrReplaceOperation.Freshen, sub_args);
-            case "time":
-                return ZipTime.Time(sub_args);
+            var sub_args = args.Skip(1).ToList();
+
+            switch (args[0].ToLowerInvariant())
+            {
+                case "add":
+                    return ZipAdd(sub_args);
+                case "list":
+                    return ZipList(sub_args);
+                case "del":
+                    return ZipDel(sub_args);
+                case "fromdir":
+                    return ZipFromDir(sub_args);
+                case "todir":
+                    return ZipToDir(sub_args);
+                case "replace":
+                    return ZipFreshen.FreshenOrReplace(ZipFreshen.FreshenOrReplaceOperation.Replace, sub_args);
+                case "freshen":
+                    return ZipFreshen.FreshenOrReplace(ZipFreshen.FreshenOrReplaceOperation.Freshen, sub_args);
+                case "time":
+                    return ZipTime.Time(sub_args);
+                case "cat":
+                    return ZipCat(sub_args);
+            }
+
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine($"Unknown command: {args[0]}");
+            Console.ResetColor();
+            return -1;
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine(ex.JoinMessages());
+            Console.ResetColor();
+            return ex.HResult;
+        }
+    }
+
+    public static int ZipCat(params string[] args)
+    => ZipCat((IEnumerable<string>)args);
+
+    public static int ZipCat(IEnumerable<string> cmdLine)
+    {
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+
+        var isRegEx = false;
+
+        foreach (var arg in cmd)
+        {
+            if (arg.Key == "e")
+            {
+                isRegEx = true;
+            }
+            else if (arg.Key != "")
+            {
+                Console.WriteLine(@"Syntax:
+zipio cat [-e] zipfile [file1 file2...]
+
+Show contents of zip archive.
+
+-e          Use regular expressions to match file names
+");
+
+                return -1;
+            }
         }
 
-        Console.ForegroundColor = ConsoleColor.Red;
-        Console.Error.WriteLine($"Unknown command: {args[0]}");
-        Console.ResetColor();
-        return -1;
+        if (!cmd.TryGetValue("", out var args) || args.Length == 0)
+        {
+            Console.WriteLine("Missing zip file path or file names.");
+            return 0;
+        }
+
+        var stdOut = Console.OpenStandardOutput();
+
+        using var archive = args[0] == "-"
+            ? new ZipArchive(Console.OpenStandardInput(), ZipArchiveMode.Read)
+            : ZipFile.OpenRead(args[0]);
+
+        foreach (var arg in args.Length < 2 ? SingleValueEnumerable.Get("") : args.Skip(1))
+        {
+            Func<ZipArchiveEntry, bool> matchFunc;
+
+            if (arg == "")
+            {
+                matchFunc = _ => true;
+            }
+            else if (!isRegEx)
+            {
+                var pattern = arg.Replace('\\', '/');
+                
+                if (pattern.Contains('/'))
+                {
+                    matchFunc = entry => entry.FullName == arg;
+                }
+                else
+                {
+                    matchFunc = entry => entry.Name == arg;
+                }
+            }
+            else
+            {
+                var regex = new Regex(arg);
+
+                matchFunc = entry => regex.IsMatch(entry.FullName);
+            }
+
+            foreach (var entry in archive.Entries.Where(matchFunc))
+            {
+                entry.Open().CopyTo(stdOut);
+            }
+        }
+
+        return 0;
     }
 
     public static int ZipList(params string[] args)
@@ -97,6 +187,11 @@ Show contents of zip archive.
 
         foreach (var arg in args.SelectMany(path =>
         {
+            if (path == "-")
+            {
+                return SingleValueEnumerable.Get("-");
+            }
+
             var dir = Path.GetDirectoryName(path);
             if (string.IsNullOrWhiteSpace(dir))
             {
@@ -118,7 +213,9 @@ Show contents of zip archive.
         {
             try
             {
-                using var archive = ZipFile.OpenRead(arg);
+                using var archive = arg == "-"
+                    ? new ZipArchive(Console.OpenStandardInput(), ZipArchiveMode.Read)
+                    : ZipFile.OpenRead(arg);
 
                 foreach (var entry in archive.Entries)
                 {
@@ -169,48 +266,46 @@ Show contents of zip archive.
 
     public static int ZipAdd(IEnumerable<string> cmdLine)
     {
-        try
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+
+        string? zip_path = null;
+        IEnumerable<string>? files_to_add = null;
+        var searchOption = SearchOption.TopDirectoryOnly;
+        var purge = false;
+        var newer = false;
+        var cont = false;
+
+        foreach (var arg in cmd)
         {
-            var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
-
-            string? zip_path = null;
-            IEnumerable<string>? files_to_add = null;
-            var searchOption = SearchOption.TopDirectoryOnly;
-            var purge = false;
-            var newer = false;
-            var cont = false;
-
-            foreach (var arg in cmd)
+            if (arg.Key.Equals("s", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("r", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("recurse", StringComparison.OrdinalIgnoreCase))
             {
-                if (arg.Key.Equals("s", StringComparison.OrdinalIgnoreCase)
-                    || arg.Key.Equals("r", StringComparison.OrdinalIgnoreCase)
-                    || arg.Key.Equals("recurse", StringComparison.OrdinalIgnoreCase))
-                {
-                    searchOption = SearchOption.AllDirectories;
-                }
-                else if (arg.Key.Equals("newer", StringComparison.OrdinalIgnoreCase)
-                    || arg.Key.Equals("n", StringComparison.OrdinalIgnoreCase))
-                {
-                    newer = true;
-                }
-                else if (arg.Key.Equals("purge", StringComparison.OrdinalIgnoreCase)
-                    || arg.Key.Equals("p", StringComparison.OrdinalIgnoreCase))
-                {
-                    purge = true;
-                }
-                else if (arg.Key.Equals("continue", StringComparison.OrdinalIgnoreCase)
-                    || arg.Key.Equals("c", StringComparison.OrdinalIgnoreCase))
-                {
-                    cont = true;
-                }
-                else if (arg.Key == "")
-                {
-                    zip_path = arg.Value.FirstOrDefault();
-                    files_to_add = arg.Value.Skip(1);
-                }
-                else
-                {
-                    Console.Error.WriteLine(@"Syntax:
+                searchOption = SearchOption.AllDirectories;
+            }
+            else if (arg.Key.Equals("newer", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("n", StringComparison.OrdinalIgnoreCase))
+            {
+                newer = true;
+            }
+            else if (arg.Key.Equals("purge", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("p", StringComparison.OrdinalIgnoreCase))
+            {
+                purge = true;
+            }
+            else if (arg.Key.Equals("continue", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("c", StringComparison.OrdinalIgnoreCase))
+            {
+                cont = true;
+            }
+            else if (arg.Key == "")
+            {
+                zip_path = arg.Value.FirstOrDefault();
+                files_to_add = arg.Value.Skip(1);
+            }
+            else
+            {
+                Console.Error.WriteLine(@"Syntax:
 zipio add [-s] [--newer] [--purge] [--continue] file.zip [files ...]
 
 Add files to zip archive.
@@ -227,98 +322,91 @@ Add files to zip archive.
 --purge     Remove existing files in archive that are not found on disk
 
 -c
---continue  Continue on source file read errors
+--continue  Ignore source file read errors
 ");
 
-                    return 0;
-                }
-            }
-
-            if (zip_path is null || files_to_add is null)
-            {
-                Console.Error.WriteLine("Missing zip file path and source file names");
                 return 0;
             }
+        }
 
-            using var archive = ZipFile.Open(zip_path, ZipArchiveMode.Update);
+        if (zip_path is null || files_to_add is null)
+        {
+            Console.Error.WriteLine("Missing zip file path and source file names");
+            return 0;
+        }
 
-            var existing_files = new List<string>();
+        using var archive = ZipFile.Open(zip_path, ZipArchiveMode.Update);
 
-            foreach (var file in files_to_add.SelectMany(path => ResolveWildcards(path, searchOption)))
+        var existing_files = new List<string>();
+
+        foreach (var file in files_to_add.SelectMany(path => ResolveWildcards(path, searchOption)))
+        {
+            try
             {
-                try
+                var fileinfo = new FileInfo(file);
+
+                using var source = fileinfo.OpenRead();
+
+                var entry = archive
+                    .Entries
+                    .FirstOrDefault(e => e.FullName.Equals(file, StringComparison.CurrentCultureIgnoreCase));
+
+                var lastWriteTimeUtc = fileinfo.LastWriteTimeUtc;
+
+                if (entry is null)
                 {
-                    var fileinfo = new FileInfo(file);
-
-                    using var source = fileinfo.OpenRead();
-
-                    var entry = archive
-                        .Entries
-                        .FirstOrDefault(e => e.FullName.Equals(file, StringComparison.CurrentCultureIgnoreCase));
-
-                    var lastWriteTimeUtc = fileinfo.LastWriteTimeUtc;
-
-                    if (entry is null)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"Adding: {file}");
-                        Console.ResetColor();
-
-                        entry = archive.CreateEntry(file, CompressionLevel.Optimal);
-
-                        using var entryStream = entry.Open();
-                        source.CopyTo(entryStream);
-                        entryStream.SetLength(source.Length);
-
-                        entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
-                    }
-                    else if (!newer ||
-                        (lastWriteTimeUtc - entry.LastWriteTime.UtcDateTime).TotalSeconds > 2)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.WriteLine($"Updating: {file}");
-                        Console.ResetColor();
-
-                        using var entryStream = entry.Open();
-                        source.CopyTo(entryStream);
-                        entryStream.SetLength(source.Length);
-
-                        entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
-                    }
-
-                    if (purge && entry is not null)
-                    {
-                        existing_files.Add(entry.FullName);
-                    }
-                }
-                catch (Exception ex) when (cont)
-                {
-                    Console.ForegroundColor = ConsoleColor.Magenta;
-                    Console.Error.WriteLine($"File '{file}': {ex.JoinMessages()}");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"Adding: {file}");
                     Console.ResetColor();
+
+                    entry = archive.CreateEntry(file, CompressionLevel.Optimal);
+
+                    using var entryStream = entry.Open();
+                    source.CopyTo(entryStream);
+                    entryStream.SetLength(source.Length);
+
+                    entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
+                }
+                else if (!newer ||
+                    (lastWriteTimeUtc - entry.LastWriteTime.UtcDateTime).TotalSeconds > 2)
+                {
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"Updating: {file}");
+                    Console.ResetColor();
+
+                    using var entryStream = entry.Open();
+                    source.CopyTo(entryStream);
+                    entryStream.SetLength(source.Length);
+
+                    entry.LastWriteTime = lastWriteTimeUtc.ToLocalTime();
+                }
+
+                if (purge && entry is not null)
+                {
+                    existing_files.Add(entry.FullName);
                 }
             }
-
-            if (purge)
+            catch (Exception ex) when (cont)
             {
-                var to_be_removed = archive.Entries
-                    .Where(entry => !existing_files.Contains(entry.FullName, StringComparer.OrdinalIgnoreCase))
-                    .ToList();
-
-                foreach (var entry in to_be_removed)
-                {
-                    Console.ForegroundColor = ConsoleColor.Magenta;
-                    Console.WriteLine($"Removing '{entry.FullName}'");
-                    Console.ResetColor();
-                    entry.Delete();
-                }
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.Error.WriteLine($"File '{file}': {ex.JoinMessages()}");
+                Console.ResetColor();
             }
         }
-        catch (Exception ex)
+
+        if (purge)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.Error.WriteLine(ex.GetBaseException().Message);
-            Console.ResetColor();
+            var to_be_removed = archive.Entries
+                .Where(entry => !existing_files.Contains(entry.FullName, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var entry in to_be_removed)
+            {
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                Console.WriteLine($"Removing '{entry.FullName}'");
+                Console.ResetColor();
+                entry.Delete();
+            }
         }
 
         return 0;
@@ -329,48 +417,39 @@ Add files to zip archive.
 
     public static int ZipDel(IEnumerable<string> cmdLine)
     {
-        try
-        {
-            var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
-            foreach (var arg in cmd)
+        foreach (var arg in cmd)
+        {
+            if (arg.Key != "")
             {
-                if (arg.Key != "")
-                {
-                    Console.WriteLine(@"Syntax:
+                Console.WriteLine(@"Syntax:
 zipio del zipfile file1 [file2 ...]
 
 Deletes files from zip archive.
 ");
 
-                    return -1;
-                }
-            }
-
-            if (!cmd.TryGetValue("", out var args) || args.Length < 2)
-            {
-                Console.WriteLine("Missing zip archive path or file names.");
-                return 0;
-            }
-
-            using var archive = ZipFile.Open(args[0], ZipArchiveMode.Update);
-            
-            var entries = archive
-                .Entries
-                .Where(e => args.Skip(1).Any(a => Regex.IsMatch(e.FullName, a, RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace)))
-                .ToArray();
-
-            foreach (var entry in entries)
-            {
-                Console.WriteLine(entry.FullName);
-                entry.Delete();
+                return -1;
             }
         }
-        catch (Exception ex)
+
+        if (!cmd.TryGetValue("", out var args) || args.Length < 2)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.Error.WriteLine(ex.GetBaseException().Message);
-            Console.ResetColor();
+            Console.WriteLine("Missing zip archive path or file names.");
+            return 0;
+        }
+
+        using var archive = ZipFile.Open(args[0], ZipArchiveMode.Update);
+
+        var entries = archive
+            .Entries
+            .Where(e => args.Skip(1).Any(a => Regex.IsMatch(e.FullName, a, RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace)))
+            .ToArray();
+
+        foreach (var entry in entries)
+        {
+            Console.WriteLine(entry.FullName);
+            entry.Delete();
         }
 
         return 0;
@@ -403,16 +482,7 @@ Create a zip archive from directory contents.
             return 0;
         }
 
-        try
-        {
-            ZipFile.CreateFromDirectory(args[1], args[0]);
-        }
-        catch (Exception ex)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.Error.WriteLine(ex.GetBaseException().Message);
-            Console.ResetColor();
-        }
+        ZipFile.CreateFromDirectory(args[1], args[0]);
 
         return 0;
     }
@@ -424,14 +494,24 @@ Create a zip archive from directory contents.
     {
         var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
+        var overwriteFiles = false;
+
         foreach (var arg in cmd)
         {
-            if (arg.Key != "")
+            if (arg.Key.Equals("o", StringComparison.OrdinalIgnoreCase)
+                || arg.Key.Equals("overwrite", StringComparison.OrdinalIgnoreCase))
+            {
+                overwriteFiles = true;
+            }
+            else if (arg.Key != "")
             {
                 Console.Error.WriteLine(@"Syntax:
-zipio todir zipfile directory
+zipio todir [--overwrite] zipfile directory
 
 Extract contents of zip archive to a directory.
+
+-o
+--overwrite     Overwrite existing files
 ");
 
                 return -1;
@@ -444,15 +524,17 @@ Extract contents of zip archive to a directory.
             return 0;
         }
 
-        try
+        if (overwriteFiles)
+        {
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+            ZipFile.ExtractToDirectory(args[0], args[1], overwriteFiles);
+#else
+            throw new PlatformNotSupportedException("Overwrite mode is not supported on .NET Framework 4.x or .NET Standard 2.0 or lower. Required: .NET Core or .NET 5.0 or later.");
+#endif
+        }
+        else
         {
             ZipFile.ExtractToDirectory(args[0], args[1]);
-        }
-        catch (Exception ex)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.Error.WriteLine(ex.GetBaseException().Message);
-            Console.ResetColor();
         }
 
         return 0;

@@ -87,6 +87,7 @@ Modifies timestamp on zip archive file to match newest file within archive.
                     try
                     {
                         DateTimeOffset newestFileTime;
+
                         using (var zip = new ZipArchive(file.OpenRead(), ZipArchiveMode.Read))
                         {
                             newestFileTime = zip.Entries.Max(entry => entry.LastWriteTime);
