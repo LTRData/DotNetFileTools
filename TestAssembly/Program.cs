@@ -1,4 +1,5 @@
-﻿using System;
+﻿using LTRLib.LTRGeneric;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -8,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Xml.Linq;
 
 namespace TestAssembly;
 
@@ -70,29 +72,71 @@ public static class Program
         return name.ToString();
     }
 
-    public static int Main(params string[] args)
+    public static int Main(params string[] cmdLine)
     {
         Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
         Thread.CurrentThread.CurrentUICulture = CultureInfo.InvariantCulture;
 
         var continueOnFailure = false;
         var searchOption = SearchOption.TopDirectoryOnly;
+        var quiet = false;
         var result = 0;
+
+        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.Ordinal);
+
+        foreach (var arg in cmd)
+        {
+            if ("-c" == arg.Key)
+            {
+                continueOnFailure = true;
+            }
+            else if ("-r" == arg.Key)
+            {
+                searchOption = SearchOption.AllDirectories;
+            }
+            else if ("-q" == arg.Key)
+            {
+                quiet = true;
+            }
+            else if (arg.Key != "")
+            {
+                Console.Error.WriteLine(@"Syntax:
+testassembly [-c] [-r] file1 [file2 ...]
+
+Prints out metadata information for classes and members of classes in a .NET
+assembly. If any member cannot be resolved, the application exits with an
+error code which makes it useful in scripts to verify assemblies after
+build/merge/edit operations.
+
+-c          Continue on errors
+
+-r          Search subdirectories
+
+-q          Quiet, no output but exits with zero or non-zero depending on
+            success or failure
+");
+
+                return -1;
+            }
+        }
+
+        if (!cmd.TryGetValue("", out var args) || args.Length != 2)
+        {
+            Console.Error.WriteLine("Missing file path.");
+            return 0;
+        }
+
+        Action<string>? Write = null;
+        Action<string>? WriteLine = null;
+
+        if (!quiet)
+        {
+            Write = Console.Write;
+            WriteLine = Console.WriteLine;
+        }
 
         foreach (var arg in args.SelectMany(name =>
         {
-            if ("-c".Equals(name, StringComparison.Ordinal))
-            {
-                continueOnFailure = true;
-                return Enumerable.Empty<string>();
-            }
-
-            if ("-r".Equals(name, StringComparison.Ordinal))
-            {
-                searchOption = SearchOption.AllDirectories;
-                return Enumerable.Empty<string>();
-            }
-
             var dir = Path.GetDirectoryName(name);
             if (string.IsNullOrWhiteSpace(dir))
             {
@@ -111,10 +155,10 @@ public static class Program
                 fullpath = asm.Location;
 
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine(fullpath);
+                WriteLine?.Invoke(fullpath);
                 Console.ResetColor();
 
-                ListAssembly(asm);
+                ListAssembly(Write, WriteLine, asm);
 
                 continue;
             }
@@ -148,114 +192,114 @@ public static class Program
         return result;
     }
 
-    private static void ListAssembly(Assembly asm)
+    private static void ListAssembly(Action<string>? Write, Action<string>? WriteLine, Assembly asm)
     {
         foreach (var t in asm.GetTypes())
         {
             Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.Write("  ");
+            Write?.Invoke("  ");
             if (t.IsNestedAssembly)
             {
-                Console.Write("internal ");
+                Write?.Invoke("internal ");
             }
 
             if (t.IsNestedFamANDAssem)
             {
-                Console.Write("internal protected ");
+                Write?.Invoke("internal protected ");
             }
 
             if (t.IsNestedFamily)
             {
-                Console.Write("protected ");
+                Write?.Invoke("protected ");
             }
 
             if (t.IsNestedFamORAssem)
             {
-                Console.Write("protected internal ");
+                Write?.Invoke("protected internal ");
             }
 
             if (t.IsNestedPrivate)
             {
-                Console.Write("private ");
+                Write?.Invoke("private ");
             }
 
             if (t.IsNestedPublic)
             {
-                Console.Write("public ");
+                Write?.Invoke("public ");
             }
 
             if (t.IsAbstract && t.IsSealed)
             {
-                Console.Write("static ");
+                Write?.Invoke("static ");
             }
             else if (t.IsAbstract && !t.IsInterface)
             {
-                Console.Write("abstract ");
+                Write?.Invoke("abstract ");
             }
             else if (t.IsSealed && t.IsClass)
             {
-                Console.Write("sealed ");
+                Write?.Invoke("sealed ");
             }
 
             if (t.IsArray)
             {
-                Console.Write("array ");
+                Write?.Invoke("array ");
             }
 
             if (t.IsAutoClass)
             {
-                Console.Write("auto ");
+                Write?.Invoke("auto ");
             }
 
             if (t.IsByRef)
             {
-                Console.Write("byref ");
+                Write?.Invoke("byref ");
             }
 
             if (t.IsCOMObject)
             {
-                Console.Write("com ");
+                Write?.Invoke("com ");
             }
 
             if (t.IsContextful)
             {
-                Console.Write("contextful ");
+                Write?.Invoke("contextful ");
             }
 
             if (t.IsExplicitLayout)
             {
-                Console.Write("explicit ");
+                Write?.Invoke("explicit ");
             }
 
             if (t.IsImport)
             {
-                Console.Write("import ");
+                Write?.Invoke("import ");
             }
 
             if (t.IsInterface)
             {
-                Console.Write("interface ");
+                Write?.Invoke("interface ");
             }
             else if (t.IsClass)
             {
-                Console.Write("class ");
+                Write?.Invoke("class ");
             }
             else if (t.IsEnum)
             {
                 if (t.IsDefined(typeof(FlagsAttribute), inherit: false))
                 {
-                    Console.Write("flags ");
+                    Write?.Invoke("flags ");
                 }
 
-                Console.Write("enum ");
+                Write?.Invoke("enum ");
             }
             else if (t.IsValueType)
             {
-                Console.Write("struct ");
+                Write?.Invoke("struct ");
             }
 
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.Write(t.FormatTypeName());
+            Write?.Invoke(t.FormatTypeName());
             Console.ForegroundColor = ConsoleColor.DarkYellow;
 
             var baseTypes = new List<Type>();
@@ -290,79 +334,79 @@ public static class Program
 
             if (baseTypes.Count > 0)
             {
-                Console.Write($" : {string.Join(", ", baseTypes.Select(bt => bt.FormatTypeName()))}");
+                Write?.Invoke($" : {string.Join(", ", baseTypes.Select(bt => bt.FormatTypeName()))}");
             }
 
-            Console.WriteLine(" {");
+            WriteLine?.Invoke(" {");
 
             foreach (var m in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
-                Console.Write("    ");
+                Write?.Invoke("    ");
                 if (m.IsAssembly)
                 {
-                    Console.Write("internal ");
+                    Write?.Invoke("internal ");
                 }
 
                 if (m.IsFamily)
                 {
-                    Console.Write("protected ");
+                    Write?.Invoke("protected ");
                 }
 
                 if (m.IsFamilyAndAssembly)
                 {
-                    Console.Write("internal protected ");
+                    Write?.Invoke("internal protected ");
                 }
 
                 if (m.IsFamilyOrAssembly)
                 {
-                    Console.Write("protected internal ");
+                    Write?.Invoke("protected internal ");
                 }
 
                 if (m.IsPrivate)
                 {
-                    Console.Write("private ");
+                    Write?.Invoke("private ");
                 }
 
                 if (m.IsPublic)
                 {
-                    Console.Write("public ");
+                    Write?.Invoke("public ");
                 }
 
                 if (m.IsLiteral)
                 {
-                    Console.Write("const ");
+                    Write?.Invoke("const ");
                 }
                 else if (m.IsStatic)
                 {
-                    Console.Write("static ");
+                    Write?.Invoke("static ");
                 }
 
                 if (m.IsInitOnly)
                 {
-                    Console.Write("readonly ");
+                    Write?.Invoke("readonly ");
                 }
 
                 if (!m.IsLiteral || m.FieldType != m.DeclaringType)
                 {
-                    Console.Write(m.FieldType.FormatTypeName() + " ");
+                    Write?.Invoke(m.FieldType.FormatTypeName() + " ");
                 }
 
                 Console.ForegroundColor = ConsoleColor.Gray;
-                Console.Write(m.Name);
+                Write?.Invoke(m.Name);
 
                 if (m.IsLiteral)
                 {
                     Console.ForegroundColor = ConsoleColor.DarkCyan;
-                    Console.Write(" = ");
+                    Write?.Invoke(" = ");
                     Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.Write(m.FormatConstantValue());
+                    Write?.Invoke(m.FormatConstantValue());
                 }
 
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
-                Console.WriteLine(";");
+                WriteLine?.Invoke(";");
 
                 Console.ResetColor();
             }
@@ -371,59 +415,59 @@ public static class Program
             {
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
-                Console.Write("    ");
+                Write?.Invoke("    ");
                 if (m.IsAssembly)
                 {
-                    Console.Write("internal ");
+                    Write?.Invoke("internal ");
                 }
 
                 if (m.IsFamily)
                 {
-                    Console.Write("protected ");
+                    Write?.Invoke("protected ");
                 }
 
                 if (m.IsFamilyAndAssembly)
                 {
-                    Console.Write("internal protected ");
+                    Write?.Invoke("internal protected ");
                 }
 
                 if (m.IsFamilyOrAssembly)
                 {
-                    Console.Write("protected internal ");
+                    Write?.Invoke("protected internal ");
                 }
 
                 if (m.IsPrivate)
                 {
-                    Console.Write("private ");
+                    Write?.Invoke("private ");
                 }
 
                 if (m.IsPublic)
                 {
-                    Console.Write("public ");
+                    Write?.Invoke("public ");
                 }
 
                 if (m.IsStatic)
                 {
-                    Console.Write("static ");
+                    Write?.Invoke("static ");
                 }
 
                 if (m.IsAbstract)
                 {
-                    Console.Write("abstract ");
+                    Write?.Invoke("abstract ");
                 }
 
                 if (m.IsVirtual)
                 {
-                    Console.Write("virtual ");
+                    Write?.Invoke("virtual ");
                 }
 
                 if (m.IsFinal)
                 {
-                    Console.Write("final ");
+                    Write?.Invoke("final ");
                 }
 
                 Console.ForegroundColor = ConsoleColor.Gray;
-                Console.Write(m.Name);
+                Write?.Invoke(m.Name);
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 var param = m.GetParameters().Select(p =>
@@ -462,7 +506,7 @@ public static class Program
                     return sb.ToString();
                 });
 
-                Console.WriteLine($"({string.Join(", ", param)});");
+                WriteLine?.Invoke($"({string.Join(", ", param)});");
 
                 Console.ResetColor();
             }
@@ -473,70 +517,70 @@ public static class Program
             {
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
-                Console.Write("    ");
+                Write?.Invoke("    ");
                 if (m.IsAssembly)
                 {
-                    Console.Write("internal ");
+                    Write?.Invoke("internal ");
                 }
 
                 if (m.IsFamily)
                 {
-                    Console.Write("protected ");
+                    Write?.Invoke("protected ");
                 }
 
                 if (m.IsFamilyAndAssembly)
                 {
-                    Console.Write("internal protected ");
+                    Write?.Invoke("internal protected ");
                 }
 
                 if (m.IsFamilyOrAssembly)
                 {
-                    Console.Write("protected internal ");
+                    Write?.Invoke("protected internal ");
                 }
 
                 if (m.IsPrivate)
                 {
-                    Console.Write("private ");
+                    Write?.Invoke("private ");
                 }
 
                 if (m.IsPublic)
                 {
-                    Console.Write("public ");
+                    Write?.Invoke("public ");
                 }
 
                 if (m.IsStatic)
                 {
-                    Console.Write("static ");
+                    Write?.Invoke("static ");
                 }
 
                 if (m.IsAbstract)
                 {
-                    Console.Write("abstract ");
+                    Write?.Invoke("abstract ");
                 }
 
                 if (m.IsVirtual)
                 {
-                    Console.Write("virtual ");
+                    Write?.Invoke("virtual ");
                 }
 
                 if (m.IsFinal)
                 {
-                    Console.Write("final ");
+                    Write?.Invoke("final ");
                 }
 
                 var dllimport = m.GetCustomAttribute<DllImportAttribute>();
                 if (dllimport is not null && !m.IsDefined(typeof(ObsoleteAttribute)))
                 {
                     imports ??= new();
-                    Console.Write("import(");
+                    Write?.Invoke("import(");
                     Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.Write(@$"""{dllimport.Value}""");
+                    Write?.Invoke(@$"""{dllimport.Value}""");
                     if (dllimport.EntryPoint is not null)
                     {
                         Console.ForegroundColor = ConsoleColor.DarkCyan;
-                        Console.Write(", ");
+                        Write?.Invoke(", ");
                         Console.ForegroundColor = ConsoleColor.Cyan;
-                        Console.Write(@$"""{dllimport.EntryPoint}""");
+                        Write?.Invoke(@$"""{dllimport.EntryPoint}""");
                         imports.Add((dllimport.Value, dllimport.EntryPoint, dllimport.CharSet));
                     }
                     else
@@ -545,12 +589,12 @@ public static class Program
                     }
 
                     Console.ForegroundColor = ConsoleColor.DarkCyan;
-                    Console.Write(") ");
+                    Write?.Invoke(") ");
                 }
 
-                Console.Write(m.ReturnType.FormatTypeName() + " ");
+                Write?.Invoke(m.ReturnType.FormatTypeName() + " ");
                 Console.ForegroundColor = ConsoleColor.Gray;
-                Console.Write(m.Name);
+                Write?.Invoke(m.Name);
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 var param = m.GetParameters().Select(p =>
@@ -589,7 +633,7 @@ public static class Program
                     return sb.ToString();
                 });
 
-                Console.Write($"({string.Join(", ", param)})");
+                Write?.Invoke($"({string.Join(", ", param)})");
 
                 if (interfaceMappings is not null)
                 {
@@ -603,11 +647,11 @@ public static class Program
 
                     if (ifimpl.Length > 0)
                     {
-                        Console.Write($" = {string.Join(", ", ifimpl)}");
+                        Write?.Invoke($" = {string.Join(", ", ifimpl)}");
                     }
                 }
 
-                Console.WriteLine(";");
+                WriteLine?.Invoke(";");
 
                 Console.ResetColor();
             }
@@ -633,25 +677,21 @@ public static class Program
                     {
                         case CharSet.None:
                         case CharSet.Ansi:
+                            if (NativeLibrary.TryGetExport(lib, $"{entryPoint}A", out _))
                             {
-                                if (NativeLibrary.TryGetExport(lib, $"{entryPoint}A", out _))
-                                {
-                                    continue;
-                                }
-
-                                break;
+                                continue;
                             }
+
+                            break;
 
                         case CharSet.Unicode:
                         case CharSet.Auto:
+                            if (NativeLibrary.TryGetExport(lib, $"{entryPoint}W", out _))
                             {
-                                if (NativeLibrary.TryGetExport(lib, $"{entryPoint}W", out _))
-                                {
-                                    continue;
-                                }
-
-                                break;
+                                continue;
                             }
+
+                            break;
 
                         default:
                             break;
@@ -664,10 +704,10 @@ public static class Program
 #endif
 
             Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.WriteLine("  }");
+            WriteLine?.Invoke("  }");
             Console.ResetColor();
 
-            Console.WriteLine();
+            WriteLine?.Invoke("");
         }
     }
 }
