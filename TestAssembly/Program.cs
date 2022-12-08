@@ -120,7 +120,7 @@ build/merge/edit operations.
             }
         }
 
-        if (!cmd.TryGetValue("", out var args) || args.Length != 2)
+        if (!cmd.TryGetValue("", out var args) || args.Length == 0)
         {
             Console.Error.WriteLine("Missing file path.");
             return 0;
