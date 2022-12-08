@@ -20,7 +20,7 @@ public static class Program
         if (args is null || args.Length < 2)
         {
             Console.Error.WriteLine(@"Syntax:
-zipio add|list|del|fromdir|todir|freshen|time [switches] zipfile [args ...]
+zipio add|list|cat|del|fromdir|todir|freshen|time [switches] zipfile [args ...]
 
 More syntax help is available using 'zipio command --help', for example:
 zipio add --help
@@ -88,7 +88,7 @@ zipio add --help
                 Console.WriteLine(@"Syntax:
 zipio cat [-e] zipfile [file1 file2...]
 
-Show contents of zip archive.
+Show contents of files within zip archive.
 
 -e          Use regular expressions to match file names
 ");
