@@ -23,9 +23,9 @@ public static class Program
 Copyright (c) 2022 Olof Lagerkvist, LTR Data. http://ltr-data.se
 
 Syntax:
-TokenSplit inFile tokenString [outFilePattern]
+splitbystr inFile tokenString [outFilePattern]
 -- or, to read input from standard input --
-TokenSplit - tokenString outFilePattern
+splitbystr - tokenString outFilePattern
 
 Each output file will have .001, .002 etc added to the file name.
 ");

@@ -28,7 +28,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ZipIO", "ZipIO\ZipIO.csproj
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "netcheck", "netcheck\netcheck.csproj", "{8355D502-4885-4795-B234-1532919873B5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenSplit", "TokenSplit\TokenSplit.csproj", "{972E23CB-2688-4A3B-BBD4-EE3DBD447C1C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "splitbystr", "TokenSplit\splitbystr.csproj", "{972E23CB-2688-4A3B-BBD4-EE3DBD447C1C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
