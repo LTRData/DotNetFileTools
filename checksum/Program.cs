@@ -89,7 +89,7 @@ public static class Program
                     PrintCheckSumForData(alg, key, output_code, valuebytes);
                 }
             }
-            else if (arg.Key.Equals("", StringComparison.Ordinal))
+            else if (arg.Key == "")
             {
                 if (value)
                 {
@@ -260,7 +260,7 @@ checksum [-x:assembly] -l
     {
         try
         {
-            if (string.IsNullOrEmpty(filename_pattern) || "-".Equals(filename_pattern, StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(filename_pattern) || "-" == filename_pattern)
             {
                 PrintCheckSumForFile(alg, key, "-", output_code);
             }

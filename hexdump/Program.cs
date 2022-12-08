@@ -121,7 +121,7 @@ public static class Program
 			else
             {
                 if (!command.Key.Equals("help", StringComparison.OrdinalIgnoreCase) &&
-                    !command.Key.Equals("?", StringComparison.Ordinal))
+                    command.Key != "?")
                 {
                     Console.WriteLine($"Unsupported option '{command.Key}'");
                     Console.WriteLine();

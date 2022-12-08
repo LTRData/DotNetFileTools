@@ -39,13 +39,13 @@ public static class Program
         var depforall = false;
         foreach (var arg in args)
         {
-            if (arg.Equals("-l", StringComparison.Ordinal))
+            if (arg == "-l")
             {
                 nodep = true;
                 continue;
             }
 
-            if (arg.Equals("-a", StringComparison.Ordinal))
+            if (arg == "-a")
             {
                 depforall = true;
                 continue;
@@ -200,7 +200,7 @@ public static class Program
         var sep = target_framework.IndexOf(",Version=v", StringComparison.Ordinal);
         var fx = target_framework.Remove(sep).TrimStart('.').ToLowerInvariant();
         var ver = target_framework.Substring(sep + ",Version=v".Length);
-        if (fx.Equals("netcoreapp", StringComparison.Ordinal) && ver[0] >= '5')
+        if (fx == "netcoreapp" && ver[0] >= '5')
         {
             fx = "net";
         }
