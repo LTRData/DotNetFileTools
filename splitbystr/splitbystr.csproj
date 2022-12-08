@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Description>TokenSplit - Split files by token string</Description>
+    <Description>splitbystr - Split files by token string</Description>
     <Copyright>Copyright (c) 2022 Olof Lagerkvist, LTR Data</Copyright>
     <Company>LTR Data</Company>
   </PropertyGroup>

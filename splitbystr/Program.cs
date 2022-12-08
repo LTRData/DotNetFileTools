@@ -1,4 +1,4 @@
-﻿/// TokenSplit - Split files by token string
+﻿/// splitbystr - Split files by token string
 /// Copyright(c) 2022 Olof Lagerkvist, LTR Data. http://ltr-data.se
 
 using System;
@@ -11,7 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace LTR.TokenSplit;
+namespace LTR.splitbystr;
 
 public static class Program
 {
@@ -19,7 +19,7 @@ public static class Program
     {
         if (args.Length is < 2 or > 3)
         {
-            Console.WriteLine(@"TokenSplit - Split files by token string
+            Console.WriteLine(@"splitbystr - Split files by token string
 Copyright (c) 2022 Olof Lagerkvist, LTR Data. http://ltr-data.se
 
 Syntax:
