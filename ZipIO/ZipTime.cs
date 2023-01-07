@@ -9,7 +9,7 @@ namespace ZipIO;
 
 public static class ZipTime
 {
-    private readonly record struct Entry(string FileName, DateTime? LastWriteTime, Exception? Exception);
+    private readonly record struct Entry(string FileName, DateTime? PreviousModTime, DateTime? LastWriteTime, Exception? Exception);
 
     public static int Time(params string[] args)
         => Time((IEnumerable<string>)args);
@@ -82,6 +82,8 @@ Modifies timestamp on zip archive file to match newest file within archive.
             .WithDegreeOfParallelism(Math.Min(Environment.ProcessorCount * 2, 64))
             .Select(file =>
             {
+                var previousModTime = file.LastWriteTimeUtc;
+
                 if (".zip".Equals(file.Extension, StringComparison.OrdinalIgnoreCase))
                 {
                     try
@@ -93,7 +95,8 @@ Modifies timestamp on zip archive file to match newest file within archive.
                             newestFileTime = zip.Entries.Max(entry => entry.LastWriteTime);
                         }
 
-                        if (modify_file_timestamps)
+                        if (modify_file_timestamps
+                            && previousModTime != newestFileTime.UtcDateTime)
                         {
                             file.LastWriteTimeUtc = newestFileTime.UtcDateTime;
                         }
@@ -102,6 +105,7 @@ Modifies timestamp on zip archive file to match newest file within archive.
                             return new Entry
                             {
                                 FileName = file.FullName,
+                                PreviousModTime = previousModTime,
                                 LastWriteTime = newestFileTime.LocalDateTime
                             };
                         }
@@ -119,6 +123,7 @@ Modifies timestamp on zip archive file to match newest file within archive.
                 return new Entry
                 {
                     FileName = file.FullName,
+                    PreviousModTime = previousModTime,
                     LastWriteTime = file.LastWriteTime
                 };
             })
@@ -126,8 +131,7 @@ Modifies timestamp on zip archive file to match newest file within archive.
 
         foreach (var entry in query)
         {
-            Console.Write(entry.FileName);
-            Console.Write(" - ");
+            Console.Write($"{entry.FileName} - ");
             if (entry.Exception is not null)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
@@ -136,7 +140,7 @@ Modifies timestamp on zip archive file to match newest file within archive.
             }
             else
             {
-                Console.WriteLine(entry.LastWriteTime.ToString());
+                Console.WriteLine($"{entry.PreviousModTime} => {entry.LastWriteTime}");
             }
         }
 
