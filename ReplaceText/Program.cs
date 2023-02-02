@@ -1,20 +1,32 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace ReplaceText;
+
+#pragma warning disable IDE0056 // Use index operator
 
 public static class Program
 {
     public static int Main(params string[] args)
     {
+        var searchOption = SearchOption.TopDirectoryOnly;
+
+        if (args is not null && args.Length >= 1 && args[0] == "-r")
+        {
+            searchOption = SearchOption.AllDirectories;
+            
+            args = args.Skip(1).ToArray();
+        }
+
         if (args is null || args.Length < 2 ||
             ((args.Length & 1) == 0))
         {
             Console.Error.WriteLine(@"Syntax:
 
-ReplaceText ""fromtext"" ""totext"" [file1 [ ... ]]");
+ReplaceText [-r] ""fromtext"" ""totext"" [""fromtext2"" ""totext2"" ...] filepattern");
 
             return -1;
         }
@@ -42,7 +54,7 @@ ReplaceText ""fromtext"" ""totext"" [file1 [ ... ]]");
             
             var dirinfo = new DirectoryInfo(dir);
 
-            files = dirinfo.EnumerateFiles(Path.GetFileName(namepattern));
+            files = dirinfo.EnumerateFiles(Path.GetFileName(namepattern), searchOption);
         }
         catch (Exception ex)
         {
@@ -52,8 +64,6 @@ ReplaceText ""fromtext"" ""totext"" [file1 [ ... ]]");
 
         foreach (var file in files)
         {
-            Console.WriteLine($"Processing file {file}");
-
             try
             {
                 var text = File.ReadAllText(file.FullName, encoding);
@@ -67,7 +77,7 @@ ReplaceText ""fromtext"" ""totext"" [file1 [ ... ]]");
 
                 if (!ReferenceEquals(newtext, text))
                 {
-                    Console.WriteLine($"{file.FullName} matches.");
+                    Console.WriteLine($"Modifying {file.FullName}");
 
                     using var outstream = new StreamWriter(new FileStream(
                         file.FullName, FileMode.Open, FileAccess.Write, FileShare.Delete), encoding);
@@ -80,8 +90,6 @@ ReplaceText ""fromtext"" ""totext"" [file1 [ ... ]]");
             {
                 Console.Error.WriteLine($"{file}: {ex.GetBaseException().Message}");
             }
-            
-            Console.WriteLine();
         }
 
         return 0;
