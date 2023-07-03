@@ -9,8 +9,6 @@ using System.Text;
 using System.Threading;
 using LTRLib.LTRGeneric;
 
-#pragma warning disable IDE0057 // Use range operator
-
 namespace checksum;
 
 public static class Program
@@ -111,7 +109,7 @@ public static class Program
             else
             {
                 Console.WriteLine(@"Generic .NET checksum calculation tool.
-Copyright (c) 2012-2022, Olof Lagerkvist, LTR Data.
+Copyright (c) 2012-2023, Olof Lagerkvist, LTR Data.
 http://ltr-data.se/opencode.html
 
 Syntax for calculating hash of file data:
@@ -156,11 +154,8 @@ checksum [-x:assembly] -l
         return thread;
     }
 
-    private readonly static Dictionary<string, HashAlgorithm?> _providers = new(StringComparer.OrdinalIgnoreCase);
-
     public static void ListHashProviders()
     {
-
         var assemblies = AppDomain.CurrentDomain.GetAssemblies();
 
 #if NETCOREAPP
@@ -210,48 +205,47 @@ checksum [-x:assembly] -l
         List.ForEach(Console.WriteLine);
     }
 
-    public static HashAlgorithm? GetHashProvider(string alg)
+    public static HashAlgorithm? CreateHashProvider(string alg)
     {
-        HashAlgorithm? algorithm = null;
+        var algorithm = HashAlgorithm.Create(alg);
 
-        lock (_providers)
+        if (algorithm is not null)
         {
-            if (!_providers.TryGetValue(alg, out algorithm))
+            return algorithm;
+        }
+
+        Type? algType = null;
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            foreach (var type in assembly.GetTypes())
             {
-                algorithm = HashAlgorithm.Create(alg);
-
-                if (algorithm is null)
+                if (type.IsClass
+                    && !type.IsAbstract
+                    && typeof(HashAlgorithm).IsAssignableFrom(type)
+                    && type.GetConstructor(System.Type.EmptyTypes) is not null
+                    && (type.Name.Equals(alg, StringComparison.OrdinalIgnoreCase)
+                    || type.Name.Equals($"{alg}CryptoServiceProvider", StringComparison.OrdinalIgnoreCase)
+                    || type.Name.Equals($"{alg}Managed", StringComparison.OrdinalIgnoreCase)
+                    || type.Name.Equals($"{alg}Cng", StringComparison.OrdinalIgnoreCase)))
                 {
-                    Type? algType = null;
-
-                    foreach (var Assembly in AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        foreach (var Type in Assembly.GetTypes())
-                        {
-                            if (Type.IsClass && !Type.IsAbstract && typeof(HashAlgorithm).IsAssignableFrom(Type) && Type.GetConstructor(System.Type.EmptyTypes) is not null && (Type.Name.Equals(alg, StringComparison.OrdinalIgnoreCase) || Type.Name.Equals($"{alg}CryptoServiceProvider", StringComparison.OrdinalIgnoreCase) || Type.Name.Equals($"{alg}Managed", StringComparison.OrdinalIgnoreCase) || Type.Name.Equals($"{alg}Cng", StringComparison.OrdinalIgnoreCase)))
-                            {
-                                algType = Type;
-                                break;
-                            }
-                        }
-
-                        if (algType is not null)
-                        {
-                            break;
-                        }
-                    }
-
-                    if (algType is null)
-                    {
-                        return null;
-                    }
-
-                    algorithm = (HashAlgorithm?)Activator.CreateInstance(algType);
+                    algType = type;
+                    break;
                 }
+            }
 
-                _providers.Add(alg, algorithm);
+            if (algType is not null)
+            {
+                break;
             }
         }
+
+        if (algType is null)
+        {
+            return null;
+        }
+
+        algorithm = (HashAlgorithm?)Activator.CreateInstance(algType);
 
         return algorithm;
     }
@@ -303,7 +297,7 @@ checksum [-x:assembly] -l
 
     public static void PrintCheckSumForFile(string alg, string? key, string filename, bool output_code)
     {
-        var algorithm = GetHashProvider(alg);
+        using var algorithm = CreateHashProvider(alg);
 
         if (algorithm is null)
         {
@@ -361,7 +355,7 @@ checksum [-x:assembly] -l
 
     public static void PrintCheckSumForData(string alg, string? key, bool output_code, byte[] data)
     {
-        using var algorithm = GetHashProvider(alg);
+        using var algorithm = CreateHashProvider(alg);
 
         if (algorithm is null)
         {

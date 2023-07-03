@@ -38,7 +38,7 @@ ReplaceText [-r] ""fromtext"" ""totext"" [""fromtext2"" ""totext2"" ...] filepat
             dict.Add(new(args[i], args[i + 1]));
         }
 
-        var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier:false);
+        var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
         var namepattern = args[args.Length - 1];
 
