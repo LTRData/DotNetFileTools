@@ -1,11 +1,13 @@
 ﻿using LTRLib.LTRGeneric;
 using NuGet.Common;
+using NuGet.Configuration;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -38,9 +40,10 @@ public static class Program
         var cmds = StringSupport.ParseCommandLine(args, StringComparer.Ordinal);
 
         var setExplicit = false;
-        var upgradeAll = false;
+        var upgradeOnly = false;
         var execute = false;
         var listAll = false;
+        var recursive = false;
         Regex[] includeFilters = Array.Empty<Regex>();
         Regex[] excludeFilters = Array.Empty<Regex>();
 
@@ -51,7 +54,7 @@ public static class Program
                 // Only change * versions to currently latest version explicitly
                 case "explicit":
                     Debug.Assert(cmd.Value.Length == 0, "--explicit option cannot have values");
-                    Debug.Assert(!upgradeAll, "Cannot set both --upgrade and --explicit");
+                    Debug.Assert(!upgradeOnly, "Cannot set both --upgrade and --explicit");
                     setExplicit = true;
                     break;
 
@@ -59,7 +62,7 @@ public static class Program
                 case "upgrade":
                     Debug.Assert(cmd.Value.Length == 0, "--upgrade option cannot have values");
                     Debug.Assert(!setExplicit, "Cannot set both --upgrade and --explicit");
-                    upgradeAll = true;
+                    upgradeOnly = true;
                     break;
 
                     // Save changes
@@ -85,6 +88,11 @@ public static class Program
                     listAll = true;
                     break;
 
+                case "r":
+                    Debug.Assert(cmd.Value.Length == 0, "-r option cannot have values");
+                    recursive = true;
+                    break;
+
                 case "":
                     break;
 
@@ -93,131 +101,162 @@ public static class Program
             }
         }
 
-        if (!cmds.TryGetValue("", out var files))
+        if (!cmds.TryGetValue("", out _))
         {
             throw new InvalidOperationException("Missing file names");
         }
 
         var repository = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
         var resource = await repository.GetResourceAsync<FindPackageByIdResource>().ConfigureAwait(false);
+
         var packageVersions = new ConcurrentDictionary<string, NuGetVersion?>(StringComparer.Ordinal);
+
+        var files = cmds[""].AsEnumerable();
+
+        if (recursive)
+        {
+            files = files.SelectMany(file =>
+            {
+                var path = Path.GetDirectoryName(file);
+                
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    path = ".";
+                }
+
+                return Directory.EnumerateFiles(path, Path.GetFileName(file), SearchOption.AllDirectories);
+            });
+        }
+
+        var result = 0;
 
         foreach (var arg in files)
         {
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"Loading '{arg}'...");
-            Console.ResetColor();
-
-            var xmlDoc = XElement.Load(arg);
-
-            var packageReferences = xmlDoc.Descendants("ItemGroup")
-                .Elements("PackageReference")
-                .Where(e => e.Attribute("Include") is not null);
-
-            if (includeFilters.Length > 0)
+            try
             {
-                packageReferences = packageReferences.
-                    Where(e =>
-                    {
-                        var name = e.Attribute("Include")!.Value;
-                        return includeFilters.Any(filter => filter.IsMatch(name));
-                    });
-            }
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"Loading '{arg}'...");
+                Console.ResetColor();
 
-            foreach (var filter in excludeFilters)
-            {
-                packageReferences = packageReferences.
-                    Where(e => !filter.IsMatch(e.Attribute("Include")!.Value));
-            }
+                var xmlDoc = XElement.Load(arg);
 
-            if (setExplicit)
-            {
-                packageReferences = packageReferences.
-                    Where(e => e.Attribute("Version")?.Value == "*");
-            }
+                var packageReferences = xmlDoc.Descendants("ItemGroup")
+                    .Elements("PackageReference")
+                    .Where(e => e.Attribute("Include") is not null);
 
-            if (upgradeAll)
-            {
-                packageReferences = packageReferences.
-                    Where(e => e.Attribute("Version")?.Value != "*");
-            }
-
-            var modified = false;
-
-            foreach (var node in packageReferences)
-            {
-                var packageName = node.Attribute("Include")!.Value;
-
-                var version = node.Attribute("Version")?.Value;
-
-                var latestVersion = packageVersions.GetOrAdd(packageName,
-                    packageName =>
-                    {
-                        var versions = resource.GetAllVersionsAsync(packageName, cache, NullLogger.Instance, CancellationToken.None).Result;
-
-                        var latestVersion = versions.OrderByDescending(v => v.IsPrerelease).ThenBy(v => v).LastOrDefault();
-
-                        return latestVersion;
-                    });
-
-                if (latestVersion is null)
+                if (includeFilters.Length > 0)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    if (version is null)
-                    {
-                        Console.WriteLine($"{packageName}: Currently unspecified version, not found on server. Setting as *");
+                    packageReferences = packageReferences.
+                        Where(e =>
+                        {
+                            var name = e.Attribute("Include")!.Value;
+                            return includeFilters.Any(filter => filter.IsMatch(name));
+                        });
+                }
 
-                        node.SetAttributeValue("Version", "*");
+                foreach (var filter in excludeFilters)
+                {
+                    packageReferences = packageReferences.
+                        Where(e => !filter.IsMatch(e.Attribute("Include")!.Value));
+                }
+
+                if (setExplicit)
+                {
+                    packageReferences = packageReferences.
+                        Where(e => e.Attribute("Version")?.Value == "*");
+                }
+
+                if (upgradeOnly)
+                {
+                    packageReferences = packageReferences.
+                        Where(e => !e.Attribute("Version")?.Value?.Contains('*') ?? true);
+                }
+
+                var modified = false;
+
+                foreach (var node in packageReferences)
+                {
+                    var packageName = node.Attribute("Include")!.Value;
+
+                    var version = node.Attribute("Version")?.Value;
+
+                    var latestVersion = packageVersions.GetOrAdd(packageName,
+                        packageName =>
+                        {
+                            var versions = resource.GetAllVersionsAsync(packageName, cache, NullLogger.Instance, CancellationToken.None).Result;
+
+                            var latestVersion = versions.OrderByDescending(v => v.IsPrerelease).ThenBy(v => v).LastOrDefault();
+
+                            return latestVersion;
+                        });
+
+                    if (latestVersion is null)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        if (version is null)
+                        {
+                            Console.WriteLine($"{packageName}: Currently unspecified version, not found on server. Setting as *");
+
+                            node.SetAttributeValue("Version", "*");
+
+                            modified = true;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"{packageName}: Currently {version}, not found on server");
+                        }
+                        Console.ResetColor();
+                    }
+                    else if (!NuGetVersion.TryParse(version, out var existingVer) || existingVer != latestVersion)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"{packageName}: Currently {version}, setting {latestVersion}");
+                        Console.ResetColor();
+
+                        node.SetAttributeValue("Version", latestVersion);
 
                         modified = true;
                     }
-                    else
+                    else if (listAll)
                     {
-                        Console.WriteLine($"{packageName}: Currently {version}, not found on server");
+                        Console.ForegroundColor = ConsoleColor.Gray;
+                        Console.WriteLine($"{packageName}: {version}");
+                        Console.ResetColor();
                     }
-                    Console.ResetColor();
                 }
-                else if (!NuGetVersion.TryParse(version, out var existingVer) || existingVer != latestVersion)
+
+                if (!modified)
                 {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"{packageName}: Currently {version}, setting {latestVersion}");
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"No chages to '{arg}'.");
                     Console.ResetColor();
-
-                    node.SetAttributeValue("Version", latestVersion);
-
-                    modified = true;
                 }
-                else if (listAll)
+                else if (execute)
                 {
-                    Console.ForegroundColor = ConsoleColor.Gray;
-                    Console.WriteLine($"{packageName}: {version}");
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.WriteLine($"Saving '{arg}'...");
+                    xmlDoc.Save(arg);
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.WriteLine($"Chages to '{arg}' not saved. Run again with --exec to save chages.");
                     Console.ResetColor();
                 }
             }
-
-            if (!modified)
+            catch (Exception ex)
             {
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"No chages to '{arg}'.");
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine(ex.Message);
                 Console.ResetColor();
-            }
-            else if (execute)
-            {
-                Console.ForegroundColor = ConsoleColor.Magenta;
-                Console.WriteLine($"Saving '{arg}'...");
-                xmlDoc.Save(arg);
-                Console.ResetColor();
-            }
-            else
-            {
-                Console.ForegroundColor = ConsoleColor.Magenta;
-                Console.WriteLine($"Chages to '{arg}' not saved. Run again with --exec to save chages.");
-                Console.ResetColor();
+                result = ex.HResult;
             }
 
+            Console.ResetColor();
             Console.WriteLine();
         }
 
-        return 0;
+        return result;
     }
 }
