@@ -227,7 +227,7 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
             {
                 var timeLeft = stopWatch.Elapsed * ((double)(diffBytes - copiedBytes) / copiedBytes);
                 var finishTime = DateTime.Now + timeLeft;
-                Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done, estimated finish time {finishTime}...\r");
+                Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
             }
             else
             {
@@ -310,7 +310,7 @@ Finished, copied {copiedBytes} ({StringSupport.FormatBytes(copiedBytes)}) bytes 
             {
                 var timeLeft = stopWatch.Elapsed * ((double)(sizeTotal - position) / position);
                 var finishTime = DateTime.Now + timeLeft;
-                Console.Write($"Reading position {position} of {sizeTotal}, {100d * position / sizeTotal:0.0}% done, estimated finish time {finishTime}...\r");
+                Console.Write($"Reading position {position} of {sizeTotal}, {100d * position / sizeTotal:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
             }
             else
             {
