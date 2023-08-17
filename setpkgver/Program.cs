@@ -228,7 +228,7 @@ public static class Program
                 if (!modified)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"No chages to '{arg}'.");
+                    Console.WriteLine($"No changes to '{arg}'.");
                     Console.ResetColor();
                 }
                 else if (execute)
@@ -241,7 +241,7 @@ public static class Program
                 else
                 {
                     Console.ForegroundColor = ConsoleColor.Magenta;
-                    Console.WriteLine($"Chages to '{arg}' not saved. Run again with --exec to save chages.");
+                    Console.WriteLine($"Changes to '{arg}' not saved. Run again with --exec to save chages.");
                     Console.ResetColor();
                 }
             }
