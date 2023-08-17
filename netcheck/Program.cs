@@ -101,7 +101,16 @@ public static class Program
         {
             try
             {
-                asm = Assembly.LoadFrom(Path.Combine(basepath ?? ".", $"{asmname.Name}.dll"));
+                var dllName = $"{asmname.Name}.dll";
+
+                var path = Path.Combine(basepath ?? ".", dllName);
+                
+                if (!File.Exists(path))
+                {
+                    path = Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), dllName);
+                }
+
+                asm = Assembly.LoadFrom(path);
                 asmname = asm.GetName();
             }
             catch (Exception ex)
