@@ -41,7 +41,8 @@ public static class Program
         var upgradeAll = false;
         var execute = false;
         var listAll = false;
-        Regex[] packageFilters = Array.Empty<Regex>();
+        Regex[] includeFilters = Array.Empty<Regex>();
+        Regex[] excludeFilters = Array.Empty<Regex>();
 
         foreach (var cmd in cmds)
         {
@@ -67,13 +68,18 @@ public static class Program
                     execute = true;
                     break;
 
-                    // Regex package name filter
-                case "name":
-                    Debug.Assert(cmd.Value.Length >= 1, "--name= option requires regex values");
-                    packageFilters = Array.ConvertAll(cmd.Value, val => new Regex(val, RegexOptions.IgnoreCase | RegexOptions.Compiled));
+                // Regex package name filter
+                case "include":
+                    Debug.Assert(cmd.Value.Length >= 1, "--include= option requires regex values");
+                    includeFilters = Array.ConvertAll(cmd.Value, val => new Regex(val, RegexOptions.IgnoreCase | RegexOptions.Compiled));
                     break;
 
-                    // List all found package names
+                case "exclude":
+                    Debug.Assert(cmd.Value.Length >= 1, "--exclude= option requires regex values");
+                    excludeFilters = Array.ConvertAll(cmd.Value, val => new Regex(val, RegexOptions.IgnoreCase | RegexOptions.Compiled));
+                    break;
+
+                // List all found package names
                 case "list":
                     Debug.Assert(cmd.Value.Length == 0, "--list option cannot have values");
                     listAll = true;
@@ -108,10 +114,20 @@ public static class Program
                 .Elements("PackageReference")
                 .Where(e => e.Attribute("Include") is not null);
 
-            foreach (var packageFilter in packageFilters)
+            if (includeFilters.Length > 0)
             {
                 packageReferences = packageReferences.
-                    Where(e => packageFilter.IsMatch(e.Attribute("Include")!.Value));
+                    Where(e =>
+                    {
+                        var name = e.Attribute("Include")!.Value;
+                        return includeFilters.Any(filter => filter.IsMatch(name));
+                    });
+            }
+
+            foreach (var filter in excludeFilters)
+            {
+                packageReferences = packageReferences.
+                    Where(e => !filter.IsMatch(e.Attribute("Include")!.Value));
             }
 
             if (setExplicit)
