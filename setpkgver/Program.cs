@@ -22,6 +22,8 @@ public static class Program
 {
     private static readonly SourceCacheContext cache = new();
 
+    private static readonly ConcurrentDictionary<string, Task<IReadOnlyList<NuGetVersion>>> packageVersions = new(StringComparer.Ordinal);
+
     public static async Task<int> Main(params string[] args)
     {
         try
@@ -143,8 +145,6 @@ setpkgver [-options] files ...
         var repository = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
         var resource = await repository.GetResourceAsync<FindPackageByIdResource>().ConfigureAwait(false);
 
-        var packageVersions = new ConcurrentDictionary<string, Task<IReadOnlyList<NuGetVersion>>>(StringComparer.Ordinal);
-
         var files = cmds[""].AsEnumerable();
 
         if (recursive)
@@ -174,125 +174,33 @@ setpkgver [-options] files ...
 
                 var xmlDoc = XElement.Load(arg);
 
-                var packageReferences = xmlDoc.Descendants("ItemGroup")
-                    .Elements("PackageReference")
-                    .Where(e => e.Attribute("Include") is not null);
-
-                if (includeFilters.Length > 0)
-                {
-                    packageReferences = packageReferences.
-                        Where(e =>
-                        {
-                            var name = e.Attribute("Include")!.Value;
-                            return includeFilters.Any(filter => filter.IsMatch(name));
-                        });
-                }
-
-                foreach (var filter in excludeFilters)
-                {
-                    packageReferences = packageReferences.
-                        Where(e => !filter.IsMatch(e.Attribute("Include")!.Value));
-                }
-
-                if (setExplicit)
-                {
-                    packageReferences = packageReferences.
-                        Where(e => e.Attribute("Version")?.Value?.EndsWith("*", StringComparison.Ordinal) ?? false);
-                }
-
-                if (upgradeOnly)
-                {
-                    packageReferences = packageReferences.
-                        Where(e => !e.Attribute("Version")?.Value?.Contains('*') ?? true);
-                }
-
                 var modified = false;
 
-                foreach (var node in packageReferences)
+                if (xmlDoc.Name.LocalName == "Project")
                 {
-                    var packageName = node.Attribute("Include")!.Value;
-
-                    var version = node.Attribute("Version")?.Value;
-
-                    var versions = await packageVersions.GetOrAdd(packageName,
-                        async packageName =>
-                        {
-                            if (verbose)
-                            {
-                                Console.ForegroundColor = ConsoleColor.Gray;
-                                Console.WriteLine($"Checking latest version for {packageName}...");
-                                Console.ResetColor();
-                            }
-
-                            try
-                            {
-                                var versions = await resource.GetAllVersionsAsync(packageName, cache, NullLogger.Instance, CancellationToken.None).ConfigureAwait(false);
-                                return versions.ToList();
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.Error.WriteLine($"Error checking version for package '{packageName}': {ex.JoinMessages()}");
-                                Console.ResetColor();
-                                return Array.Empty<NuGetVersion>();
-                            }
-                        }).ConfigureAwait(false);
-
-                    NuGetVersion? latestVersion;
-                    
-                    if (version is not null
-                        && setExplicit
-                        && version.EndsWith("*", StringComparison.Ordinal))
-                    {
-                        var versionPrefix = version.TrimEnd('*');
-
-                        latestVersion = versions
-                            .Where(v => v.OriginalVersion?.StartsWith(versionPrefix, StringComparison.Ordinal) ?? false)
-                            .OrderByDescending(v => v.IsPrerelease)
-                            .ThenBy(v => v)
-                            .LastOrDefault();
-                    }
-                    else
-                    {
-                        latestVersion = versions
-                            .OrderByDescending(v => v.IsPrerelease)
-                            .ThenBy(v => v)
-                            .LastOrDefault();
-                    }
-
-                    if (latestVersion is null)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        if (version is null)
-                        {
-                            Console.WriteLine($"{packageName}: Currently unspecified version, not found on server. Setting as *");
-
-                            node.SetAttributeValue("Version", "*");
-
-                            modified = true;
-                        }
-                        else
-                        {
-                            Console.WriteLine($"{packageName}: Currently {version}, not found on server");
-                        }
-                        Console.ResetColor();
-                    }
-                    else if (!NuGetVersion.TryParse(version, out var existingVer) || existingVer != latestVersion)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"{packageName}: Currently {version}, setting {latestVersion}");
-                        Console.ResetColor();
-
-                        node.SetAttributeValue("Version", latestVersion);
-
-                        modified = true;
-                    }
-                    else if (verbose)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Gray;
-                        Console.WriteLine($"{packageName}: {version}");
-                        Console.ResetColor();
-                    }
+                    modified = await NetSdkProjectFile(setExplicit,
+                                                       upgradeOnly,
+                                                       verbose,
+                                                       includeFilters,
+                                                       excludeFilters,
+                                                       resource,
+                                                       xmlDoc)
+                        .ConfigureAwait(false);
+                }
+                else if (xmlDoc.Name.LocalName == "packages")
+                {
+                    modified = await PackageConfigFile(setExplicit,
+                                                       upgradeOnly,
+                                                       verbose,
+                                                       includeFilters,
+                                                       excludeFilters,
+                                                       resource,
+                                                       xmlDoc)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    Console.WriteLine($"Unsupported project file type: {xmlDoc.Name.LocalName}");
                 }
 
                 if (!modified)
@@ -328,5 +236,254 @@ setpkgver [-options] files ...
         }
 
         return result;
+    }
+
+    private static async Task<bool> NetSdkProjectFile(bool setExplicit,
+                                                      bool upgradeOnly,
+                                                      bool verbose,
+                                                      Regex[] includeFilters,
+                                                      Regex[] excludeFilters,
+                                                      FindPackageByIdResource resource,
+                                                      XElement xmlDoc)
+    {
+        var modified = false;
+
+        var packageReferences = xmlDoc.Descendants("ItemGroup")
+            .Elements("PackageReference")
+            .Where(e => e.Attribute("Include") is not null);
+
+        if (includeFilters.Length > 0)
+        {
+            packageReferences = packageReferences.
+                Where(e =>
+                {
+                    var name = e.Attribute("Include")!.Value;
+                    return includeFilters.Any(filter => filter.IsMatch(name));
+                });
+        }
+
+        foreach (var filter in excludeFilters)
+        {
+            packageReferences = packageReferences.
+                Where(e => !filter.IsMatch(e.Attribute("Include")!.Value));
+        }
+
+        if (setExplicit)
+        {
+            packageReferences = packageReferences.
+                Where(e => e.Attribute("Version")?.Value?.EndsWith("*", StringComparison.Ordinal) ?? false);
+        }
+
+        if (upgradeOnly)
+        {
+            packageReferences = packageReferences.
+                Where(e => !e.Attribute("Version")?.Value?.Contains('*') ?? true);
+        }
+
+        foreach (var node in packageReferences)
+        {
+            var packageName = node.Attribute("Include")!.Value;
+
+            var version = node.Attribute("Version")?.Value;
+
+            var versions = await GetAllVersions(verbose, resource, packageName)
+                .ConfigureAwait(false);
+
+            NuGetVersion? latestVersion;
+
+            if (version is not null
+                && setExplicit
+                && version.EndsWith("*", StringComparison.Ordinal))
+            {
+                var versionPrefix = version.TrimEnd('*');
+
+                latestVersion = versions
+                    .Where(v => v.OriginalVersion?.StartsWith(versionPrefix, StringComparison.Ordinal) ?? false)
+                    .OrderByDescending(v => v.IsPrerelease)
+                    .ThenBy(v => v)
+                    .LastOrDefault();
+            }
+            else
+            {
+                latestVersion = versions
+                    .OrderByDescending(v => v.IsPrerelease)
+                    .ThenBy(v => v)
+                    .LastOrDefault();
+            }
+
+            if (latestVersion is null)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                if (version is null)
+                {
+                    Console.WriteLine($"{packageName}: Currently unspecified version, not found on server. Setting as *");
+
+                    node.SetAttributeValue("Version", "*");
+
+                    modified = true;
+                }
+                else
+                {
+                    Console.WriteLine($"{packageName}: Currently {version}, not found on server");
+                }
+                Console.ResetColor();
+            }
+            else if (!NuGetVersion.TryParse(version, out var existingVer) || existingVer != latestVersion)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"{packageName}: Currently {version}, setting {latestVersion}");
+                Console.ResetColor();
+
+                node.SetAttributeValue("Version", latestVersion);
+
+                modified = true;
+            }
+            else if (verbose)
+            {
+                Console.ForegroundColor = ConsoleColor.Gray;
+                Console.WriteLine($"{packageName}: {version}");
+                Console.ResetColor();
+            }
+        }
+
+        return modified;
+    }
+
+    private static async Task<bool> PackageConfigFile(bool setExplicit,
+                                                      bool upgradeOnly,
+                                                      bool verbose,
+                                                      Regex[] includeFilters,
+                                                      Regex[] excludeFilters,
+                                                      FindPackageByIdResource resource,
+                                                      XElement xmlDoc)
+    {
+        var modified = false;
+
+        var packageReferences = xmlDoc
+            .Elements("package")
+            .Where(e => e.Attribute("id") is not null);
+
+        if (includeFilters.Length > 0)
+        {
+            packageReferences = packageReferences.
+                Where(e =>
+                {
+                    var name = e.Attribute("id")!.Value;
+                    return includeFilters.Any(filter => filter.IsMatch(name));
+                });
+        }
+
+        foreach (var filter in excludeFilters)
+        {
+            packageReferences = packageReferences.
+                Where(e => !filter.IsMatch(e.Attribute("id")!.Value));
+        }
+
+        if (setExplicit)
+        {
+            packageReferences = packageReferences.
+                Where(e => e.Attribute("version")?.Value?.EndsWith("*", StringComparison.Ordinal) ?? false);
+        }
+
+        if (upgradeOnly)
+        {
+            packageReferences = packageReferences.
+                Where(e => !e.Attribute("version")?.Value?.Contains('*') ?? true);
+        }
+
+        foreach (var node in packageReferences)
+        {
+            var packageName = node.Attribute("id")!.Value;
+
+            var version = node.Attribute("version")?.Value;
+
+            var versions = await GetAllVersions(verbose, resource, packageName)
+                .ConfigureAwait(false);
+
+            NuGetVersion? latestVersion;
+
+            if (version is not null
+                && setExplicit
+                && version.EndsWith("*", StringComparison.Ordinal))
+            {
+                var versionPrefix = version.TrimEnd('*');
+
+                latestVersion = versions
+                    .Where(v => v.OriginalVersion?.StartsWith(versionPrefix, StringComparison.Ordinal) ?? false)
+                    .OrderByDescending(v => v.IsPrerelease)
+                    .ThenBy(v => v)
+                    .LastOrDefault();
+            }
+            else
+            {
+                latestVersion = versions
+                    .OrderByDescending(v => v.IsPrerelease)
+                    .ThenBy(v => v)
+                    .LastOrDefault();
+            }
+
+            if (latestVersion is null)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                if (version is null)
+                {
+                    Console.WriteLine($"{packageName}: Currently unspecified version, not found on server. Setting as *");
+
+                    node.SetAttributeValue("version", "*");
+
+                    modified = true;
+                }
+                else
+                {
+                    Console.WriteLine($"{packageName}: Currently {version}, not found on server");
+                }
+                Console.ResetColor();
+            }
+            else if (!NuGetVersion.TryParse(version, out var existingVer) || existingVer != latestVersion)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"{packageName}: Currently {version}, setting {latestVersion}");
+                Console.ResetColor();
+
+                node.SetAttributeValue("version", latestVersion);
+
+                modified = true;
+            }
+            else if (verbose)
+            {
+                Console.ForegroundColor = ConsoleColor.Gray;
+                Console.WriteLine($"{packageName}: {version}");
+                Console.ResetColor();
+            }
+        }
+
+        return modified;
+    }
+
+    private static async Task<IReadOnlyList<NuGetVersion>> GetAllVersions(bool verbose, FindPackageByIdResource resource, string packageName)
+    {
+        return await packageVersions.GetOrAdd(packageName,
+            async packageName =>
+            {
+                if (verbose)
+                {
+                    Console.ForegroundColor = ConsoleColor.Gray;
+                    Console.WriteLine($"Checking latest version for {packageName}...");
+                    Console.ResetColor();
+                }
+
+                try
+                {
+                    var versions = await resource.GetAllVersionsAsync(packageName, cache, NullLogger.Instance, CancellationToken.None).ConfigureAwait(false);
+                    return versions.ToList();
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Error.WriteLine($"Error checking version for package '{packageName}': {ex.JoinMessages()}");
+                    Console.ResetColor();
+                    return Array.Empty<NuGetVersion>();
+                }
+            }).ConfigureAwait(false);
     }
 }
