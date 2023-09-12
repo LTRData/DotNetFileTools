@@ -1,5 +1,6 @@
 ﻿using LTRLib.Extensions;
 using LTRLib.LTRGeneric;
+using LTRLib.Services.rss;
 using NuGet.Common;
 using NuGet.Configuration;
 using NuGet.Protocol;
@@ -252,10 +253,21 @@ setpkgver [-options] files ...
             .Elements("PackageReference")
             .Where(e => e.Attribute("Include") is not null);
 
+        foreach (var e in packageReferences
+            .Select(packageReference => (packageReference, versionElement: packageReference.Element("Version")))
+            .Where(e => e.versionElement is not null)
+            .ToArray())
+        {
+            e.packageReference.SetAttributeValue(XName.Get("Version"), e.versionElement!.Value);
+            e.versionElement.Remove();
+
+            modified = true;
+        }
+
         if (includeFilters.Length > 0)
         {
-            packageReferences = packageReferences.
-                Where(e =>
+            packageReferences = packageReferences
+                .Where(e =>
                 {
                     var name = e.Attribute("Include")!.Value;
                     return includeFilters.Any(filter => filter.IsMatch(name));
@@ -264,14 +276,14 @@ setpkgver [-options] files ...
 
         foreach (var filter in excludeFilters)
         {
-            packageReferences = packageReferences.
-                Where(e => !filter.IsMatch(e.Attribute("Include")!.Value));
+            packageReferences = packageReferences
+                .Where(e => !filter.IsMatch(e.Attribute("Include")!.Value));
         }
 
         if (setExplicit)
         {
-            packageReferences = packageReferences.
-                Where(e => e.Attribute("Version")?.Value?.EndsWith("*", StringComparison.Ordinal) ?? false);
+            packageReferences = packageReferences
+                .Where(e => e.Attribute("Version")?.Value?.EndsWith("*", StringComparison.Ordinal) ?? false);
         }
 
         if (upgradeOnly)
@@ -284,66 +296,104 @@ setpkgver [-options] files ...
         {
             var packageName = node.Attribute("Include")!.Value;
 
-            var version = node.Attribute("Version")?.Value;
+            var currentVersion = node.Attribute("Version")?.Value;
 
-            var versions = await GetAllVersions(verbose, resource, packageName)
-                .ConfigureAwait(false);
+            modified = await ShowPackageAsync(setExplicit,
+                                              verbose,
+                                              modified,
+                                              packageName,
+                                              currentVersion,
+                                              resource,
+                                              newVersion => node.SetAttributeValue("Version", newVersion)).ConfigureAwait(false);
+        }
 
-            NuGetVersion? latestVersion;
+        return modified;
+    }
 
-            if (version is not null
-                && setExplicit
-                && version.EndsWith("*", StringComparison.Ordinal))
-            {
-                var versionPrefix = version.TrimEnd('*');
+    private static async Task<bool> ShowPackageAsync(bool setExplicit,
+                                                     bool verbose,
+                                                     bool modified,
+                                                     string packageName,
+                                                     string? currentVersion,
+                                                     FindPackageByIdResource resource,
+                                                     Action<string?> setNewVersion)
+    {
+        var versions = await GetAllVersions(verbose, resource, packageName)
+            .ConfigureAwait(false);
 
-                latestVersion = versions
-                    .Where(v => v.OriginalVersion?.StartsWith(versionPrefix, StringComparison.Ordinal) ?? false)
-                    .OrderByDescending(v => v.IsPrerelease)
-                    .ThenBy(v => v)
-                    .LastOrDefault();
-            }
-            else
-            {
-                latestVersion = versions
-                    .OrderByDescending(v => v.IsPrerelease)
-                    .ThenBy(v => v)
-                    .LastOrDefault();
-            }
+        NuGetVersion? latestVersion;
 
-            if (latestVersion is null)
+        var currentNugetVersion = versions
+            .FirstOrDefault(v => v.OriginalVersion == currentVersion);
+
+        if (currentNugetVersion is not null)
+        {
+            if (currentNugetVersion.IsPrerelease)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                if (version is null)
-                {
-                    Console.WriteLine($"{packageName}: Currently unspecified version, not found on server. Setting as *");
-
-                    node.SetAttributeValue("Version", "*");
-
-                    modified = true;
-                }
-                else
-                {
-                    Console.WriteLine($"{packageName}: Currently {version}, not found on server");
-                }
+                Console.WriteLine($"{packageName}: Current version {currentVersion} is pre-release");
                 Console.ResetColor();
             }
-            else if (!NuGetVersion.TryParse(version, out var existingVer) || existingVer != latestVersion)
+            if (currentNugetVersion.IsLegacyVersion)
             {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"{packageName}: Currently {version}, setting {latestVersion}");
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"{packageName}: Current version {currentVersion} is legacy");
                 Console.ResetColor();
+            }
+        }
 
-                node.SetAttributeValue("Version", latestVersion);
+        if (currentVersion is not null
+            && setExplicit
+            && currentVersion.EndsWith("*", StringComparison.Ordinal))
+        {
+            var versionPrefix = currentVersion.TrimEnd('*');
+
+            latestVersion = versions
+                .Where(v => v.OriginalVersion?.StartsWith(versionPrefix, StringComparison.Ordinal) ?? false)
+                .OrderByDescending(v => v.IsPrerelease)
+                .ThenBy(v => v)
+                .LastOrDefault();
+        }
+        else
+        {
+            latestVersion = versions
+                .OrderByDescending(v => v.IsPrerelease)
+                .ThenBy(v => v)
+                .LastOrDefault();
+        }
+
+        if (latestVersion is null)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            if (currentVersion is null)
+            {
+                Console.WriteLine($"{packageName}: Currently unspecified version, not found on server. Setting as *");
+
+                setNewVersion("*");
 
                 modified = true;
             }
-            else if (verbose)
+            else
             {
-                Console.ForegroundColor = ConsoleColor.Gray;
-                Console.WriteLine($"{packageName}: {version}");
-                Console.ResetColor();
+                Console.WriteLine($"{packageName}: Currently {currentVersion}, not found on server");
             }
+            Console.ResetColor();
+        }
+        else if (!NuGetVersion.TryParse(currentVersion, out var existingVer) || existingVer != latestVersion)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"{packageName}: Currently {currentVersion}, setting {latestVersion}");
+            Console.ResetColor();
+
+            setNewVersion(latestVersion.OriginalVersion);
+
+            modified = true;
+        }
+        else if (verbose)
+        {
+            Console.ForegroundColor = ConsoleColor.Gray;
+            Console.WriteLine($"{packageName}: {currentVersion}");
+            Console.ResetColor();
         }
 
         return modified;
@@ -395,66 +445,15 @@ setpkgver [-options] files ...
         {
             var packageName = node.Attribute("id")!.Value;
 
-            var version = node.Attribute("version")?.Value;
+            var currentVersion = node.Attribute("version")?.Value;
 
-            var versions = await GetAllVersions(verbose, resource, packageName)
-                .ConfigureAwait(false);
-
-            NuGetVersion? latestVersion;
-
-            if (version is not null
-                && setExplicit
-                && version.EndsWith("*", StringComparison.Ordinal))
-            {
-                var versionPrefix = version.TrimEnd('*');
-
-                latestVersion = versions
-                    .Where(v => v.OriginalVersion?.StartsWith(versionPrefix, StringComparison.Ordinal) ?? false)
-                    .OrderByDescending(v => v.IsPrerelease)
-                    .ThenBy(v => v)
-                    .LastOrDefault();
-            }
-            else
-            {
-                latestVersion = versions
-                    .OrderByDescending(v => v.IsPrerelease)
-                    .ThenBy(v => v)
-                    .LastOrDefault();
-            }
-
-            if (latestVersion is null)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                if (version is null)
-                {
-                    Console.WriteLine($"{packageName}: Currently unspecified version, not found on server. Setting as *");
-
-                    node.SetAttributeValue("version", "*");
-
-                    modified = true;
-                }
-                else
-                {
-                    Console.WriteLine($"{packageName}: Currently {version}, not found on server");
-                }
-                Console.ResetColor();
-            }
-            else if (!NuGetVersion.TryParse(version, out var existingVer) || existingVer != latestVersion)
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"{packageName}: Currently {version}, setting {latestVersion}");
-                Console.ResetColor();
-
-                node.SetAttributeValue("version", latestVersion);
-
-                modified = true;
-            }
-            else if (verbose)
-            {
-                Console.ForegroundColor = ConsoleColor.Gray;
-                Console.WriteLine($"{packageName}: {version}");
-                Console.ResetColor();
-            }
+            modified = await ShowPackageAsync(setExplicit,
+                                              verbose,
+                                              modified,
+                                              packageName,
+                                              currentVersion,
+                                              resource,
+                                              newVersion => node.SetAttributeValue("version", newVersion)).ConfigureAwait(false);
         }
 
         return modified;
