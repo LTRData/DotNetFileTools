@@ -25,11 +25,11 @@ public static class Program
 
     private static readonly ConcurrentDictionary<string, Task<IReadOnlyList<NuGetVersion>>> packageVersions = new(StringComparer.Ordinal);
 
-    public static async Task<int> Main(params string[] args)
+    public static int Main(params string[] args)
     {
         try
         {
-            return await UnsafeMain(args).ConfigureAwait(false);
+            return UnsafeMain(args).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -239,6 +239,8 @@ setpkgver [-options] files ...
         return result;
     }
 
+    private static readonly XName xNameVersion = XName.Get("Version");
+
     private static async Task<bool> NetSdkProjectFile(bool setExplicit,
                                                       bool upgradeOnly,
                                                       bool verbose,
@@ -258,10 +260,8 @@ setpkgver [-options] files ...
             .Where(e => e.versionElement is not null)
             .ToArray())
         {
-            e.packageReference.SetAttributeValue(XName.Get("Version"), e.versionElement!.Value);
+            e.packageReference.SetAttributeValue(xNameVersion, e.versionElement!.Value);
             e.versionElement.Remove();
-
-            modified = true;
         }
 
         if (includeFilters.Length > 0)
@@ -305,6 +305,66 @@ setpkgver [-options] files ...
                                               currentVersion,
                                               resource,
                                               newVersion => node.SetAttributeValue("Version", newVersion)).ConfigureAwait(false);
+        }
+
+        return modified;
+    }
+
+    private static async Task<bool> PackageConfigFile(bool setExplicit,
+                                                      bool upgradeOnly,
+                                                      bool verbose,
+                                                      Regex[] includeFilters,
+                                                      Regex[] excludeFilters,
+                                                      FindPackageByIdResource resource,
+                                                      XElement xmlDoc)
+    {
+        var modified = false;
+
+        var packageReferences = xmlDoc
+            .Elements("package")
+            .Where(e => e.Attribute("id") is not null);
+
+        if (includeFilters.Length > 0)
+        {
+            packageReferences = packageReferences.
+                Where(e =>
+                {
+                    var name = e.Attribute("id")!.Value;
+                    return includeFilters.Any(filter => filter.IsMatch(name));
+                });
+        }
+
+        foreach (var filter in excludeFilters)
+        {
+            packageReferences = packageReferences.
+                Where(e => !filter.IsMatch(e.Attribute("id")!.Value));
+        }
+
+        if (setExplicit)
+        {
+            packageReferences = packageReferences.
+                Where(e => e.Attribute("version")?.Value?.EndsWith("*", StringComparison.Ordinal) ?? false);
+        }
+
+        if (upgradeOnly)
+        {
+            packageReferences = packageReferences.
+                Where(e => !e.Attribute("version")?.Value?.Contains('*') ?? true);
+        }
+
+        foreach (var node in packageReferences)
+        {
+            var packageName = node.Attribute("id")!.Value;
+
+            var currentVersion = node.Attribute("version")?.Value;
+
+            modified = await ShowPackageAsync(setExplicit,
+                                              verbose,
+                                              modified,
+                                              packageName,
+                                              currentVersion,
+                                              resource,
+                                              newVersion => node.SetAttributeValue("version", newVersion)).ConfigureAwait(false);
         }
 
         return modified;
@@ -399,67 +459,9 @@ setpkgver [-options] files ...
         return modified;
     }
 
-    private static async Task<bool> PackageConfigFile(bool setExplicit,
-                                                      bool upgradeOnly,
-                                                      bool verbose,
-                                                      Regex[] includeFilters,
-                                                      Regex[] excludeFilters,
-                                                      FindPackageByIdResource resource,
-                                                      XElement xmlDoc)
-    {
-        var modified = false;
-
-        var packageReferences = xmlDoc
-            .Elements("package")
-            .Where(e => e.Attribute("id") is not null);
-
-        if (includeFilters.Length > 0)
-        {
-            packageReferences = packageReferences.
-                Where(e =>
-                {
-                    var name = e.Attribute("id")!.Value;
-                    return includeFilters.Any(filter => filter.IsMatch(name));
-                });
-        }
-
-        foreach (var filter in excludeFilters)
-        {
-            packageReferences = packageReferences.
-                Where(e => !filter.IsMatch(e.Attribute("id")!.Value));
-        }
-
-        if (setExplicit)
-        {
-            packageReferences = packageReferences.
-                Where(e => e.Attribute("version")?.Value?.EndsWith("*", StringComparison.Ordinal) ?? false);
-        }
-
-        if (upgradeOnly)
-        {
-            packageReferences = packageReferences.
-                Where(e => !e.Attribute("version")?.Value?.Contains('*') ?? true);
-        }
-
-        foreach (var node in packageReferences)
-        {
-            var packageName = node.Attribute("id")!.Value;
-
-            var currentVersion = node.Attribute("version")?.Value;
-
-            modified = await ShowPackageAsync(setExplicit,
-                                              verbose,
-                                              modified,
-                                              packageName,
-                                              currentVersion,
-                                              resource,
-                                              newVersion => node.SetAttributeValue("version", newVersion)).ConfigureAwait(false);
-        }
-
-        return modified;
-    }
-
-    private static async Task<IReadOnlyList<NuGetVersion>> GetAllVersions(bool verbose, FindPackageByIdResource resource, string packageName)
+    private static async Task<IReadOnlyList<NuGetVersion>> GetAllVersions(bool verbose,
+                                                                          FindPackageByIdResource resource,
+                                                                          string packageName)
     {
         return await packageVersions.GetOrAdd(packageName,
             async packageName =>
