@@ -1,5 +1,5 @@
-﻿using LTRLib.Extensions;
-using LTRLib.LTRGeneric;
+﻿using LTRData.Extensions.CommandLine;
+using LTRData.Extensions.Formatting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -33,7 +33,7 @@ public static class ZipFreshen
 
     public static int FreshenOrReplace(FreshenOrReplaceOperation operation, IEnumerable<string> cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         string[]? files = null;
         var source_directory = string.Empty;

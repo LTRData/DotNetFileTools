@@ -7,7 +7,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using LTRLib.LTRGeneric;
+using LTRData.Extensions.CommandLine;
 
 namespace checksum;
 
@@ -32,13 +32,14 @@ public static class Program
                 Console.WriteLine(ex.Message);
                 ex = ex.InnerException;
             }
+
             Console.ResetColor();
         }
     }
 
     public static void UnsafeMain(params string[] cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         var alg = "md5";
         string? key = null;
@@ -163,10 +164,12 @@ checksum [-x:assembly] -l
         {
             assemblies = AppDomain.CurrentDomain.GetAssemblies();
         }
+
         if (Array.IndexOf(assemblies, typeof(MD5).Assembly) < 0)
         {
             assemblies = AppDomain.CurrentDomain.GetAssemblies();
         }
+
         if (Array.IndexOf(assemblies, typeof(TripleDES).Assembly) < 0)
         {
             assemblies = AppDomain.CurrentDomain.GetAssemblies();
@@ -186,6 +189,7 @@ checksum [-x:assembly] -l
                     {
                         name = Type.DeclaringType.Name;
                     }
+
                     foreach (var suffix in new[] { "CryptoServiceProvider", "Managed", "Cng" })
                     {
                         if (name.EndsWith(suffix))
@@ -194,6 +198,7 @@ checksum [-x:assembly] -l
                             break;
                         }
                     }
+
                     if (!List.Contains(name))
                     {
                         List.Add(name);
@@ -278,6 +283,7 @@ checksum [-x:assembly] -l
                     {
                         filename = filename.Substring(2);
                     }
+
                     PrintCheckSumForFile(alg, key, filename, output_code);
                 }
 
@@ -311,7 +317,9 @@ checksum [-x:assembly] -l
             {
                 Console.WriteLine($"Hash algorithm '{alg}' requires key.");
                 return;
-            } keyedAlgorithm.Key = Encoding.UTF8.GetBytes(key);
+            }
+            
+            keyedAlgorithm.Key = Encoding.UTF8.GetBytes(key);
         }
         else if (!string.IsNullOrEmpty(key))
         {
@@ -350,7 +358,6 @@ checksum [-x:assembly] -l
         {
             return new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, buffersize, FileOptions.SequentialScan);
         }
-
     }
 
     public static void PrintCheckSumForData(string alg, string? key, bool output_code, byte[] data)
@@ -370,6 +377,7 @@ checksum [-x:assembly] -l
                 Console.WriteLine($"Hash algorithm '{alg}' requires key.");
                 return;
             }
+
             keyedAlgorithm.Key = Encoding.UTF8.GetBytes(key);
         }
         else if (!string.IsNullOrEmpty(key))

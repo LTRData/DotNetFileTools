@@ -1,7 +1,7 @@
-﻿using LTRLib.Extensions;
+﻿using LTRData.Extensions.CommandLine;
+using LTRData.Extensions.Formatting;
 using LTRLib.Geodesy.Positions;
 using LTRLib.Imaging;
-using LTRLib.LTRGeneric;
 using Microsoft.Win32;
 using System;
 using System.Diagnostics;
@@ -26,7 +26,7 @@ public static class Program
 
         var baseurl = "bingmaps:?cp={lat}~{lon}&lvl=16&collection=point.{lat}_{lon}_{name}";
 
-        foreach (var arg in StringSupport.ParseCommandLine(args, StringComparer.OrdinalIgnoreCase))
+        foreach (var arg in CommandLineParser.ParseCommandLine(args, StringComparer.OrdinalIgnoreCase))
         {
             try
             {
@@ -54,12 +54,8 @@ public static class Program
                             picUri = new Uri(Path.GetFullPath(path));
                         }
 
-                        var pos = GeoLocators.GetImageGeoLocation(picUri);
-
-                        if (pos is null)
-                        {
-                            throw new InvalidOperationException($"The image '{picUri}' does not contain a position");
-                        }
+                        var pos = GeoLocators.GetImageGeoLocation(picUri)
+                            ?? throw new InvalidOperationException($"The image '{picUri}' does not contain a position");
 
                         var lat = pos.LatitudeToString(LatLonPosition.GeoFormat.Degrees);
                         var lon = pos.LongitudeToString(LatLonPosition.GeoFormat.Degrees);
@@ -97,15 +93,12 @@ public static class Program
         }
 
 #if NETFRAMEWORK
-        var asmpath = Assembly.GetExecutingAssembly()?.Location;
+        var asmpath = Assembly.GetExecutingAssembly()?.Location
+            ?? throw new InvalidOperationException("Unkown application path");
 #else
-        var asmpath = Environment.ProcessPath;
+        var asmpath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Unkown application path");
 #endif
-
-        if (asmpath is null)
-        {
-            throw new InvalidOperationException("Unkown application path");
-        }
 
         foreach (var basekey in new[] {
             @"HKEY_CLASSES_ROOT\SystemFileAssociations\.jpg\Shell",

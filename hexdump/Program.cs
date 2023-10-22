@@ -1,6 +1,6 @@
-﻿using LTRLib.Extensions;
+﻿using LTRData.Extensions.CommandLine;
+using LTRData.Extensions.Formatting;
 using LTRLib.IO;
-using LTRLib.LTRGeneric;
 using System;
 using System.IO;
 using System.Linq;
@@ -93,7 +93,7 @@ public static class Program
 
     public static void UnsafeMain(params string[] command_line_args)
     {
-        var commands = StringSupport.ParseCommandLine(command_line_args, StringComparer.OrdinalIgnoreCase);
+        var commands = CommandLineParser.ParseCommandLine(command_line_args, StringComparer.OrdinalIgnoreCase);
 
         long offset = 0;
         long? count = null;
@@ -106,13 +106,13 @@ public static class Program
             else if (command.Key == "offset" &&
                 command.Value.Length == 1)
             {
-                offset = StringSupport.ParseSuffixedSize(command.Value[0]) ??
+                offset = SizeFormatting.ParseSuffixedSize(command.Value[0]) ??
                     throw new FormatException($"The value '{command.Value[0]}' is not a valid size");
             }
             else if (command.Key == "count" &&
                 command.Value.Length == 1)
             {
-                count = StringSupport.ParseSuffixedSize(command.Value[0]) ??
+                count = SizeFormatting.ParseSuffixedSize(command.Value[0]) ??
                     throw new FormatException($"The value '{command.Value[0]}' is not a valid size");
             }
             else if (command.Key == "trace")

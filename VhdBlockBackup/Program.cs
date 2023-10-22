@@ -1,11 +1,9 @@
 ﻿using DiscUtils;
-using LTRLib.Extensions;
-using LTRLib.IO;
-using LTRLib.LTRGeneric;
+using LTRData.Extensions.CommandLine;
+using LTRData.Extensions.Formatting;
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,7 +36,7 @@ Aborting...");
 
         var cancellationToken = tokenSource.Token;
 
-        var cmds = StringSupport.ParseCommandLine(args, StringComparer.Ordinal);
+        var cmds = CommandLineParser.ParseCommandLine(args, StringComparer.Ordinal);
 
         var operation = Operation.None;
 
@@ -57,6 +55,7 @@ Aborting...");
                     {
                         return ShowHelp();
                     }
+
                     operation = Operation.CreateMeta;
                     break;
 
@@ -66,6 +65,7 @@ Aborting...");
                     {
                         return ShowHelp();
                     }
+
                     operation = Operation.Check;
                     break;
 
@@ -75,6 +75,7 @@ Aborting...");
                     {
                         return ShowHelp();
                     }
+
                     operation = Operation.Copy;
                     break;
 
@@ -174,7 +175,7 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
 
         var totalSize = new FileInfo(source).Length;
 
-        Console.WriteLine($"{diffBytes} bytes ({StringSupport.FormatBytes(diffBytes)}) to update of {totalSize} ({StringSupport.FormatBytes(totalSize)}), {100d * diffBytes / totalSize:0.0}% modified.");
+        Console.WriteLine($"Total allocated image size {totalSize} ({SizeFormatting.FormatBytes(totalSize)}), {diffBytes} bytes ({SizeFormatting.FormatBytes(diffBytes)}) to update, {100d * diffBytes / totalSize:0.0}% modified.");
 
         if (dryRun)
         {
@@ -232,7 +233,7 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
             else
             {
                 stopWatch.Start();
-                Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done...\r");
+                Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done...                                                     \r");
             }
 
             var read = await sourceStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
@@ -254,7 +255,7 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
         }
 
         Console.WriteLine($@"
-Finished, copied {copiedBytes} ({StringSupport.FormatBytes(copiedBytes)}) bytes of {diffBytes} ({StringSupport.FormatBytes(diffBytes)}) expected. Flushing target...");
+Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes of {diffBytes} ({SizeFormatting.FormatBytes(diffBytes)}) expected. Flushing target...");
 
         var flushTargetTask = targetStream.FlushAsync(cancellationToken);
 

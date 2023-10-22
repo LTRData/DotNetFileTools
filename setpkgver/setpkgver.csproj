@@ -2,12 +2,12 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net48;net6.0;net7.0</TargetFrameworks>
+    <TargetFrameworks>net48;netstandard2.1;net6.0;net7.0</TargetFrameworks>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LTRLib40" Version="*" />
+    <PackageReference Include="LTRData.Extensions" Version="*" />
     <PackageReference Include="NuGet.Protocol" Version="*" />
   </ItemGroup>
 

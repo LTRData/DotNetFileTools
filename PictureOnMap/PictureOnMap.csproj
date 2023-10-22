@@ -11,9 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="LTRLib40" Version="*" />
-    <PackageReference Include="LTRLib.Geodesy" Version="*" />
     <PackageReference Include="LTRLib.Placemarks" Version="*" />
-    <PackageReference Include="LTRLib.Windows.Extended" Version="*" />
+    <PackageReference Include="LTRLib.Windows" Version="*" />
   </ItemGroup>
 
 </Project>

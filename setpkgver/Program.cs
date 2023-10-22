@@ -1,8 +1,6 @@
-﻿using LTRLib.Extensions;
-using LTRLib.LTRGeneric;
-using LTRLib.Services.rss;
+﻿using LTRData.Extensions.CommandLine;
+using LTRData.Extensions.Formatting;
 using NuGet.Common;
-using NuGet.Configuration;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
@@ -42,7 +40,7 @@ public static class Program
 
     public static async Task<int> UnsafeMain(params string[] args)
     {
-        var cmds = StringSupport.ParseCommandLine(args, StringComparer.Ordinal);
+        var cmds = CommandLineParser.ParseCommandLine(args, StringComparer.Ordinal);
 
         var setExplicit = false;
         var upgradeOnly = false;
@@ -394,6 +392,7 @@ setpkgver [-options] files ...
                 Console.WriteLine($"{packageName}: Current version {currentVersion} is pre-release");
                 Console.ResetColor();
             }
+
             if (currentNugetVersion.IsLegacyVersion)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
@@ -437,6 +436,7 @@ setpkgver [-options] files ...
             {
                 Console.WriteLine($"{packageName}: Currently {currentVersion}, not found on server");
             }
+
             Console.ResetColor();
         }
         else if (!NuGetVersion.TryParse(currentVersion, out var existingVer) || existingVer != latestVersion)

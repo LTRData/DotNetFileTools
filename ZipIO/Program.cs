@@ -1,6 +1,6 @@
-﻿using LTRLib.Extensions;
-using LTRLib.IO;
-using LTRLib.LTRGeneric;
+﻿using LTRData.Extensions.Buffers;
+using LTRData.Extensions.CommandLine;
+using LTRData.Extensions.Formatting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -73,7 +73,7 @@ zipio add --help
 
     public static int ZipCat(IEnumerable<string> cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         var isRegEx = false;
 
@@ -151,7 +151,7 @@ Show contents of files within zip archive.
 
     public static int ZipList(IEnumerable<string> cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         var longlisting = false;
         foreach (var arg in cmd)
@@ -266,7 +266,7 @@ Show contents of zip archive.
 
     public static int ZipAdd(IEnumerable<string> cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         string? zip_path = null;
         IEnumerable<string>? files_to_add = null;
@@ -417,7 +417,7 @@ Add files to zip archive.
 
     public static int ZipDel(IEnumerable<string> cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         foreach (var arg in cmd)
         {
@@ -460,7 +460,7 @@ Deletes files from zip archive.
 
     public static int ZipFromDir(IEnumerable<string> cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         foreach (var arg in cmd)
         {
@@ -492,7 +492,7 @@ Create a zip archive from directory contents.
 
     public static int ZipToDir(IEnumerable<string> cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         var overwriteFiles = false;
 

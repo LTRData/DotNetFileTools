@@ -1,4 +1,4 @@
-﻿using LTRLib.LTRGeneric;
+﻿using LTRData.Extensions.CommandLine;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -9,7 +9,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using System.Xml.Linq;
 
 namespace TestAssembly;
 
@@ -82,7 +81,7 @@ public static class Program
         var quiet = false;
         var result = 0;
 
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.Ordinal);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.Ordinal);
 
         foreach (var arg in cmd)
         {

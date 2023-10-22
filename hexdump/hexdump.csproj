@@ -2,11 +2,12 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net40;net6.0</TargetFrameworks>
+    <TargetFrameworks>net40;netstandard2.1;net6.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LTRLib40" Version="*" />
+    <PackageReference Include="LTRLib.NativeIo" Version="*" />
+    <PackageReference Include="LTRData.Extensions" Version="*" />
   </ItemGroup>
 
 </Project>

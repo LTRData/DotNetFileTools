@@ -1,4 +1,4 @@
-﻿using LTRLib.LTRGeneric;
+﻿using LTRData.Extensions.CommandLine;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,7 +16,7 @@ public static class ZipTime
 
     public static int Time(IEnumerable<string> cmdLine)
     {
-        var cmd = StringSupport.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
+        var cmd = CommandLineParser.ParseCommandLine(cmdLine, StringComparer.OrdinalIgnoreCase);
 
         var modify_file_timestamps = false;
         var search_options = SearchOption.TopDirectoryOnly;

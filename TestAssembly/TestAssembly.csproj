@@ -4,11 +4,11 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <Copyright>Copyright © Olof Lagerkvist, LTR Data 2015-2022</Copyright>
-    <TargetFrameworks>net48;net6.0</TargetFrameworks>
+    <TargetFrameworks>net48;netstandard2.1;net6.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LTRLib40" Version="*" />
+    <PackageReference Include="LTRData.Extensions" Version="*" />
   </ItemGroup>
 
 </Project>
