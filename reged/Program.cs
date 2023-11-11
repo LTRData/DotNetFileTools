@@ -151,12 +151,12 @@ Binary data for REG_BINARY values, can be specified as hexadecimal string with t
 
 Image files:
 You can query and manipulate registry hives inside virtual machine disk image files such as vhd, vhdx, vdi and vmdk.
-reged --image=path.vhd --part=partitionnumber
+reged --image=path.vhd --part=partitionnumber ...
 
 Where 'partitionnumber' is one-based number of the partition in the image file, zero to read entire image as one partition. File systems ntfs and fat32 are detected automatically.
 ";
 
-                Console.WriteLine(StringFormatting.LineFormat(msg.AsSpan()));
+																						Console.WriteLine(StringFormatting.LineFormat(msg.AsSpan(), indentWidth: 2));
 
                 return 1;
             }
@@ -166,7 +166,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
         {
             var msg = @"Needs either of --query, --add or --remove";
 
-            Console.WriteLine(StringFormatting.LineFormat(msg.AsSpan()));
+            Console.WriteLine(StringFormatting.LineFormat(msg.AsSpan(), indentWidth: 2));
 
             return 1;
         }
@@ -188,10 +188,18 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             ? (VirtualDisk.OpenDisk(imageFile, access) ?? new DiscUtils.Raw.Disk(imageFile, access))
             : null;
 
+        var partitions = image?.Partitions;
+
+        if (image is not null && partition > 0
+            && (partitions is null || partitions.Count < partition))
+        {
+            throw new DriveNotFoundException($"Partition {partition} not found in image '{imageFile}'");
+        }
+
         var fileSystemStream = image is not null
             ? partition == 0
             ? image.Content
-            : image.Partitions[partition - 1].Open()
+            : partitions?[partition - 1].Open()
             : null;
 
         var fileSystem = fileSystemStream is not null
@@ -202,13 +210,24 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
         if (imageFile is not null
             && fileSystem is null)
         {
-            throw new IOException($"Partition {partition} in image file '{imageFile}' does not contain a supported file system");
+            if (partition == 0 && partitions is not null)
+            {
+                throw new NotSupportedException($"Image file '{imageFile}' does not contain a supported file system. Use --part to specify a partition in the image file.");
+            }
+            else if (partition == 0)
+            {
+                throw new NotSupportedException($"Image file '{imageFile}' does not contain a supported file system.");
+            }
+            else
+            {
+                throw new NotSupportedException($"Partition {partition} in image file '{imageFile}' does not contain a supported file system.");
+            }
         }
 
         using var hive = fileSystem is not null
             ? (opMode == OpMode.Add && !fileSystem.FileExists(hiveFile)
             ? RegistryHive.Create(fileSystem.OpenFile(hiveFile, FileMode.OpenOrCreate, access))
-            : new RegistryHive(fileSystem.OpenFile(hiveFile, FileMode.Open, access)))
+            : new RegistryHive(fileSystem.GetFileInfo(hiveFile), access))
             : (opMode == OpMode.Add && !File.Exists(hiveFile)
             ? RegistryHive.Create(hiveFile)
             : new RegistryHive(hiveFile, access));
