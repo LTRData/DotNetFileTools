@@ -4,13 +4,9 @@ using DiscUtils.Streams;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
 using System;
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace reged;
 
@@ -49,6 +45,8 @@ public static class Program
         string? keyPath = null;
         string? valueName = null;
         string? dataString = null;
+        byte[]? dataBytes = null;
+        var binaryOutput = false;
         var recursive = false;
         OpMode opMode = 0;
         RegistryValueType? type = null;
@@ -103,9 +101,22 @@ public static class Program
             }
             else if (cmd.Key == "" && cmd.Value.Length == 1
                 && (cmds.ContainsKey("v") || cmds.ContainsKey("value"))
+                && !cmds.ContainsKey("raw")
                 && opMode is OpMode.Add or OpMode.Remove)
             {
                 dataString = cmd.Value[0];
+            }
+            else if (cmd.Key == "binary" && cmd.Value.Length == 0
+                && (cmds.ContainsKey("v") || cmds.ContainsKey("value"))
+                && !cmds.ContainsKey("")
+                && opMode is OpMode.Add)
+            {
+                dataBytes = ReadAllStdIn();
+            }
+            else if (cmd.Key == "binary" && cmd.Value.Length == 0
+                && opMode is OpMode.Query)
+            {
+                binaryOutput = true;
             }
             else if ((cmd.Key is "r" or "subkeys") && cmd.Value.Length == 0
                 && opMode is OpMode.Query or OpMode.Remove)
@@ -127,19 +138,19 @@ public static class Program
 Copyright (c) 2023, LTR Data. https://ltr-data.se
 
 Query syntax:
-reged --query --hive=filepath [--key=keypath] [--subkeys] [--value=valuename]
+reged --query --hive=filepath [--key=keypath] [--subkeys] [--value=valuename] [--binary]
 
 Add/update syntax:
-reged --add --hive=filepath --key=keypath [--subkeys] [--value=valuename [--type=valuetype] data]
+reged --add --hive=filepath --key=keypath [--subkeys] [--value=valuename [--type=valuetype] data | --binary ]
 
 Remove syntax:
 reged --remove --hive=filepath [--key=keypath] [--subkeys] [--value=valuename [--type=valuetype] [data]]
 
 Omitting --key or specifying an empty key name refers to root key in the hive.
 
-Specifying --value without a value name refers to the default (unnamed) value for the key.
+Specifying --value without a value name in --query mode refers to the default (unnamed) value for the key.
 
-The --type option can be ommitted, in which case the same type as an existing value with the same name will be used, or REG_SZ if no value with the same name currently exists.
+In --add mode when adding or updating a value, the --type option can be ommitted. In that case, the same type as an existing value with the same name will be used, or REG_SZ if no value with the same name currently exists. Default value type is REG_BINARY instead of REG_SZ if --binary is specified and value data is read from standard input.
 
 If data is specified along with --remove option, value is only removed if it matches specified data. If data is specified with --remove for a REG_MULTI_SZ (multi-string) value, the string specified by the data is removed from the multi-string value and remaining multi-string value is written back to registry hive.
 
@@ -149,6 +160,10 @@ For string values, you can specify some special characters by escaping them with
 
 Binary data for REG_BINARY values, can be specified as hexadecimal string with two characters for each byte, optionally delimited by '-' or ':'. Numeric data for REG_DWORD and REG_QWORD can be specified as decimal number or, prefixed with '0x', as hexadecimal number.
 
+The --binary option in --query mode suppresses all normal text output and only dumps value contents in binary format to standard output.
+
+The --binary option in --add mode reads new value data to add from standard input.
+
 Image files:
 You can query and manipulate registry hives inside virtual machine disk image files such as vhd, vhdx, vdi and vmdk.
 reged --image=path.vhd --part=partitionnumber ...
@@ -156,7 +171,7 @@ reged --image=path.vhd --part=partitionnumber ...
 Where 'partitionnumber' is one-based number of the partition in the image file, zero to read entire image as one partition. File systems ntfs and fat32 are detected automatically.
 ";
 
-																						Console.WriteLine(StringFormatting.LineFormat(msg.AsSpan(), indentWidth: 2));
+                Console.WriteLine(StringFormatting.LineFormat(msg.AsSpan(), indentWidth: 2));
 
                 return 1;
             }
@@ -250,7 +265,10 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             throw new IOException($"Key '{keyPath}' not found in hive '{hiveFile}'");
         }
 
-        Console.WriteLine($@"\{keyPath}");
+        if (!binaryOutput)
+        {
+            Console.WriteLine($@"\{keyPath}");
+        }
 
         if (opMode == OpMode.Query)
         {
@@ -262,16 +280,23 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
                     {
                         try
                         {
-                            var data = key.GetValue(value, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-
-                            if (data is null)
+                            if (binaryOutput)
                             {
-                                continue;
+                                if (key.GetRegistryValue(value) is { } valueObj)
+                                {
+                                    var data = valueObj.RawValue;
+                                    Console.OpenStandardOutput().Write(data, 0, data.Length);
+                                }
                             }
+                            else
+                            {
+                                if (key.GetValue(value, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is { } data)
+                                {
+                                    var msg = $"    {value,-20}  {FormatRegistryValue(data, key.GetValueType(value))}";
 
-                            var msg = $"    {value,-20}  {FormatRegistryValue(data, key.GetValueType(value))}";
-
-                            Console.WriteLine(msg);
+                                    Console.WriteLine(msg);
+                                }
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -283,21 +308,38 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
                 }
                 else
                 {
-                    if (key.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is { } data)
+                    if (binaryOutput)
                     {
-                        var msg = $"    {valueName,-20}  {FormatRegistryValue(data, key.GetValueType(valueName))}";
+                        if (key.GetRegistryValue(valueName) is { } valueObj)
+                        {
+                            var data = valueObj.RawValue;
+                            Console.OpenStandardOutput().Write(data, 0, data.Length);
+                        }
+                    }
+                    else
+                    {
+                        if (key.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is { } data)
+                        {
+                            var msg = $"    {valueName,-20}  {FormatRegistryValue(data, key.GetValueType(valueName))}";
 
-                        Console.WriteLine(msg);
+                            Console.WriteLine(msg);
+                        }
                     }
                 }
 
-                Console.WriteLine();
+                if (!binaryOutput)
+                {
+                    Console.WriteLine();
+                }
 
                 if (recursive || valueName is null)
                 {
                     foreach (var subkey in key.SubKeys)
                     {
-                        Console.WriteLine($@"\{subkey.Name}");
+                        if (!binaryOutput)
+                        {
+                            Console.WriteLine($@"\{subkey.Name}");
+                        }
 
                         if (recursive)
                         {
@@ -407,18 +449,27 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
                 return 0;
             }
 
-            if (dataString is null)
+            type ??= key.GetRegistryValue(valueName)?.DataType
+                ?? (dataBytes is not null ? RegistryValueType.Binary : RegistryValueType.String);
+
+            if (dataBytes is not null)
+            {
+                var value = key.GetRegistryValue(valueName)
+                    ?? key.AddRegistryValue(valueName);
+
+                value.SetRawData(dataBytes, type.Value);
+            }
+            else if (dataString is not null)
+            {
+                var data = ParseDataString(dataString, type.Value);
+
+                key.SetValue(valueName, data, type.Value);
+            }
+            else
             {
                 throw new InvalidOperationException("Missing value data");
             }
 
-            type ??= key.GetRegistryValue(valueName)?.DataType
-                ?? RegistryValueType.String;
-
-            var data = ParseDataString(dataString, type.Value);
-
-            key.SetValue(valueName, data, type.Value);
-            
             return 0;
         }
         else
@@ -427,6 +478,27 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
         }
 
         return 0;
+    }
+
+    private static byte[] ReadAllStdIn()
+    {
+        var stdin = Console.OpenStandardInput();
+
+        if (stdin.CanSeek)
+        {
+            return stdin.ReadExactly((int)stdin.Length);
+        }
+
+        var buffer = new MemoryStream();
+        stdin.CopyTo(buffer);
+        if (buffer.Length == buffer.Capacity)
+        {
+            return buffer.GetBuffer();
+        }
+        else
+        {
+            return buffer.ToArray();
+        }
     }
 
     private static object ParseDataString(string dataString, RegistryValueType type)
@@ -523,6 +595,24 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             return true;
         }
 
+        if (uint.TryParse(typeString, out var result))
+        {
+            type = (RegistryValueType)result;
+            return true;
+        }
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+        if (typeString.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            && uint.TryParse(typeString.AsSpan(2), NumberStyles.HexNumber, null, out result))
+#else
+        if (typeString.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            && uint.TryParse(typeString.Substring(2), NumberStyles.HexNumber, null, out result))
+#endif
+        {
+            type = (RegistryValueType)result;
+            return true;
+        }
+
         switch (typeString.ToUpperInvariant())
         {
             case "REG_SZ":
@@ -606,20 +696,20 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             default:
                 if (value is byte[] bytes)
                 {
-                    return $@"{type}: {FormatRegistryBytes(bytes)}";
+                    return $@"0x{type,-11:X}: {FormatRegistryBytes(bytes)}";
                 }
                 else
                 {
-                    return $@"{type}: ""{value}""";
+                    return $@"0x{type,-11:X}: ""{value}""";
                 }
         }
     }
 
     public static string FormatRegistryBytes(byte[] bytes)
     {
-        if (bytes.Length <= 16)
+        if (bytes.Length == 0)
         {
-            return BitConverter.ToString(bytes);
+            return "";
         }
 
         return $@"
