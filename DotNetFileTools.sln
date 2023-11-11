@@ -34,6 +34,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VhdBlockBackup", "VhdBlockB
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "setpkgver", "setpkgver\setpkgver.csproj", "{4C065D34-8196-48E9-B75E-1FE7851CDEE4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "reged", "reged\reged.csproj", "{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -138,6 +140,14 @@ Global
 		{4C065D34-8196-48E9-B75E-1FE7851CDEE4}.Release|Any CPU.Build.0 = Release|Any CPU
 		{4C065D34-8196-48E9-B75E-1FE7851CDEE4}.Release|x86.ActiveCfg = Release|Any CPU
 		{4C065D34-8196-48E9-B75E-1FE7851CDEE4}.Release|x86.Build.0 = Release|Any CPU
+		{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}.Debug|x86.Build.0 = Debug|Any CPU
+		{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}.Release|x86.ActiveCfg = Release|Any CPU
+		{0D95D596-CC52-4C49-9A93-AD93C5F76F5E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
