@@ -41,9 +41,10 @@ public static class ZipFreshen
 
         foreach (var arg in cmd)
         {
-            if (arg.Key.Equals("source", StringComparison.OrdinalIgnoreCase))
+            if (arg.Key.Equals("source", StringComparison.OrdinalIgnoreCase)
+                && arg.Value.Length == 1)
             {
-                source_directory = arg.Value.FirstOrDefault();
+                source_directory = arg.Value[0];
             }
             else if (arg.Key.Equals("purge", StringComparison.OrdinalIgnoreCase)
                 || arg.Key.Equals("p", StringComparison.OrdinalIgnoreCase))
