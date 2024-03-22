@@ -50,6 +50,7 @@ public static class Program
         var recursive = false;
         OpMode opMode = 0;
         RegistryValueType? type = null;
+        var listUsers = false;
 
         var cmds = CommandLineParser.ParseCommandLine(args, StringComparer.Ordinal);
 
@@ -129,13 +130,20 @@ public static class Program
             {
                 type = valueType;
             }
+            else if (cmd.Key is "listusers" && cmd.Value.Length == 0
+                && opMode == OpMode.Query
+                && !cmds.ContainsKey("key") && !cmds.ContainsKey("value") && !cmds.ContainsKey("binary"))
+            {
+                listUsers = true;
+                keyPath = @"SAM\Domains\Account\Users";
+            }
             else if (cmd.Key is "q" or "query" or "a" or "add" or "d" or "remove" or "c" or "copy" or "m" or "move")
             {
             }
             else
             {
                 var msg = @"Registry hive editing tool.
-Copyright (c) 2023, LTR Data. https://ltr-data.se
+Copyright (c) 2023 - 2024, LTR Data. https://ltr-data.se
 
 Query syntax:
 reged --query --hive=filepath [--key=keypath] [--subkeys] [--value=valuename] [--binary]
@@ -235,7 +243,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             }
             else
             {
-                throw new NotSupportedException($"Partition {partition} in image file '{imageFile}' does not contain a supported file system.");
+                throw new NotSupportedException($"Partition {partition} ({partitions![partition - 1].TypeAsString}) in image file '{imageFile}' does not contain a supported file system.");
             }
         }
 
@@ -290,12 +298,11 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
                             }
                             else
                             {
-                                if (key.GetValue(value, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is { } data)
-                                {
-                                    var msg = $"    {value,-20}  {FormatRegistryValue(data, key.GetValueType(value))}";
+                                var data = key.GetValue(value, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
 
-                                    Console.WriteLine(msg);
-                                }
+                                var msg = $"    {value,-20}  {FormatRegistryValue(data, key.GetValueType(value))}";
+
+                                Console.WriteLine(msg);
                             }
                         }
                         catch (Exception ex)
@@ -349,7 +356,40 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
                 }
             }
 
-            QueryKey(key!);
+            void ListUsers(RegistryKey key)
+            {
+                var namesKey = key.OpenSubKey("Names")
+                    ?? throw new DirectoryNotFoundException("Registry key 'Names' not found");
+
+                foreach (var name in namesKey.SubKeys)
+                {
+                    try
+                    {
+                        var uid = (int)name.GetValueType(null);
+
+                        var msg = $"{uid,-5} {name.KeyName}";
+
+                        Console.WriteLine(msg);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.Error.WriteLine($"User '{name.Name}' failed: {ex.JoinMessages()}");
+                        Console.ResetColor();
+                    }
+                }
+
+                Console.WriteLine();
+            }
+
+            if (listUsers)
+            {
+                ListUsers(key!);
+            }
+            else
+            {
+                QueryKey(key!);
+            }
         }
         else if (opMode == OpMode.Remove)
         {
