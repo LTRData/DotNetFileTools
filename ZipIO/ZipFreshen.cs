@@ -94,7 +94,7 @@ write time of the zip file is reset to original timestamp.
             {
                 WriteConsole(Console.Error, ConsoleColor.Red, $"{arg}: {ex.GetBaseException().Message}");
 
-                return Enumerable.Empty<FileInfo>();
+                return [];
             }
         })
         .AsParallel()

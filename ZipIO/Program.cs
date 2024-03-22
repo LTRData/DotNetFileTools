@@ -207,7 +207,7 @@ Show contents of zip archive.
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.Error.WriteLine($"{path}: {ex.GetBaseException().Message}");
                 Console.ResetColor();
-                return Enumerable.Empty<string>();
+                return [];
             }
         }))
         {

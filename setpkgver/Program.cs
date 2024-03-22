@@ -47,8 +47,8 @@ public static class Program
         var saveChanges = false;
         var verbose = false;
         var recursive = false;
-        Regex[] includeFilters = Array.Empty<Regex>();
-        Regex[] excludeFilters = Array.Empty<Regex>();
+        Regex[] includeFilters = [];
+        Regex[] excludeFilters = [];
 
         foreach (var cmd in cmds)
         {
