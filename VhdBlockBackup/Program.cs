@@ -40,6 +40,8 @@ Aborting...");
 
         var operation = Operation.None;
 
+        string? diffdir = null;
+
         if (!cmds.TryGetValue("", out var files))
         {
             return ShowHelp();
@@ -79,6 +81,16 @@ Aborting...");
                     operation = Operation.Copy;
                     break;
 
+                case "diffdir":
+                    if (cmd.Value.Length != 1
+                        || !cmds.ContainsKey("copy"))
+                    {
+                        return ShowHelp();
+                    }
+
+                    diffdir = cmd.Value[0];
+                    break;
+
                 case "":
                     break;
 
@@ -102,12 +114,12 @@ Aborting...");
                     break;
 
                 case Operation.Check:
-                    await CopyDiffAsync(files[0], files[1], dryRun: true, cancellationToken).ConfigureAwait(false);
+                    await CopyDiffAsync(files[0], files[1], dryRun: true, diffdir: null, cancellationToken).ConfigureAwait(false);
 
                     break;
 
                 case Operation.Copy:
-                    await CopyDiffAsync(files[0], files[1], dryRun: false, cancellationToken).ConfigureAwait(false);
+                    await CopyDiffAsync(files[0], files[1], dryRun: false, diffdir, cancellationToken).ConfigureAwait(false);
 
                     break;
 
@@ -128,7 +140,7 @@ Aborting...");
         }
     }
 
-    private static async Task CopyDiffAsync(string source, string target, bool dryRun, CancellationToken cancellationToken)
+    private static async Task CopyDiffAsync(string source, string target, bool dryRun, string? diffdir, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -194,7 +206,7 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
 
         using var targetImage = VirtualDisk.OpenDisk(target, FileAccess.Read, useAsync: true);
 
-        var diff = Path.Join(Path.GetDirectoryName(target).AsSpan(), $"{Path.GetFileNameWithoutExtension(target.AsSpan())}_diff{Path.GetExtension(target.AsSpan())}");
+        var diff = Path.Join(diffdir ?? Path.GetDirectoryName(target), $"{Path.GetFileNameWithoutExtension(target.AsSpan())}_diff{Path.GetExtension(target.AsSpan())}");
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -211,6 +223,8 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
 
         var stopWatch = new Stopwatch();
 
+        var messageUpdateTime = 0L;
+
         for (var i = 0; i < blocksTotal; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -220,20 +234,28 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
                 continue;
             }
 
+            var messageUpdating = false;
+
             var position =
                 sourceStream.Position =
                 targetStream.Position = (long)i * BlockSize;
 
             if (stopWatch.IsRunning && copiedBytes > 0)
             {
-                var timeLeft = stopWatch.Elapsed * ((double)(diffBytes - copiedBytes) / copiedBytes);
-                var finishTime = DateTime.Now + timeLeft;
-                Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
+                if (Environment.TickCount64 - messageUpdateTime > 400)
+                {
+                    var timeLeft = stopWatch.Elapsed * ((double)(diffBytes - copiedBytes) / copiedBytes);
+                    var finishTime = DateTime.Now + timeLeft;
+                    Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
+                    messageUpdateTime = Environment.TickCount64;
+                    messageUpdating = true;
+                }
             }
             else
             {
                 stopWatch.Start();
                 Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done...                                                     \r");
+                messageUpdating = true;
             }
 
             var read = await sourceStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
@@ -245,7 +267,10 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            Console.Write($"Writ\r");
+            if (messageUpdating)
+            {
+                Console.Write($"Writ\r");
+            }
 
             var span = buffer.AsMemory(0, read);
 
@@ -301,6 +326,8 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         var stopWatch = new Stopwatch();
 
+        var messageUpdateTime = 0L;
+
         for (; ;)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -309,9 +336,13 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
             if (stopWatch.IsRunning && position > 0)
             {
-                var timeLeft = stopWatch.Elapsed * ((double)(sizeTotal - position) / position);
-                var finishTime = DateTime.Now + timeLeft;
-                Console.Write($"Reading position {position} of {sizeTotal}, {100d * position / sizeTotal:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
+                if (Environment.TickCount64 - messageUpdateTime > 400)
+                {
+                    var timeLeft = stopWatch.Elapsed * ((double)(sizeTotal - position) / position);
+                    var finishTime = DateTime.Now + timeLeft;
+                    Console.Write($"Reading position {position} of {sizeTotal}, {100d * position / sizeTotal:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
+                    messageUpdateTime = Environment.TickCount64;
+                }
             }
             else
             {
@@ -348,7 +379,8 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         await metafile.WriteAsync(checksums, cancellationToken).ConfigureAwait(false);
 
-        Console.WriteLine($@"Finished at {stream.Position} of {sizeTotal}, {100d * stream.Position / sizeTotal:0.0}%. Flushing output...");
+        Console.WriteLine($@"
+Finished at {stream.Position} of {sizeTotal}, {100d * stream.Position / sizeTotal:0.0}%. Flushing output...");
     }
 
     private static int ShowHelp()
@@ -362,7 +394,7 @@ VhdBlockBackup --check source.vhdx target.vhdx
     operation. Also checks that meta data indicate compatible image file
     sizes.
 
-VhdBlockBackup --copy source.vhdx target.vhdx
+VhdBlockBackup --copy [--diffdir=directory] source.vhdx target.vhdx
     Copies modified blocks from one vhdx file to another. Meta block lists
     must already be present and up to date.");
 
