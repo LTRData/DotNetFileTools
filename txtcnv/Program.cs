@@ -32,6 +32,7 @@ public static class Program
 
         Encoding? from = Encoding.UTF8;
         Encoding? to = Encoding.UTF8;
+        string[]? files = null;
         var showhelp = false;
 
         foreach (var cmd in cmds)
@@ -58,13 +59,17 @@ public static class Program
                     to = Encoding.GetEncoding(cmd.Value[0]);
                 }
             }
+            else if (cmd.Key == "")
+            {
+                files = cmd.Value;
+            }
             else
             {
                 showhelp = true;
             }
         }
 
-        if (showhelp || from is null || to is null)
+        if (showhelp || (from is null && to is null && files is null))
         {
             Console.Error.WriteLine(@"Syntax:
 txtcnv [-d:from] [-e:to] [files ...]
@@ -83,12 +88,17 @@ Supported encodings:
             return 100;
         }
 
+        from ??= Encoding.UTF8;
+        to ??= Encoding.UTF8;
+
         using var destination = Console.OpenStandardOutput();
 
-        if (!cmds.TryGetValue("", out var files) || files.Length == 0)
+        if (files is null || files.Length == 0)
         {
+            using var source = Console.OpenStandardInput();
+
             Encoding
-                .CreateTranscodingStream(Console.OpenStandardInput(), from, to)
+                .CreateTranscodingStream(source, from, to)
                 .CopyTo(destination);
 
             return 0;
@@ -96,8 +106,12 @@ Supported encodings:
 
         foreach (var file in files)
         {
+            using var source = file == "-"
+                ? Console.OpenStandardInput()
+                : File.OpenRead(file);
+
             Encoding
-                .CreateTranscodingStream(File.OpenRead(file), from, to)
+                .CreateTranscodingStream(source, from, to)
                 .CopyTo(destination);
         }
 
