@@ -71,18 +71,21 @@ public static class Program
 
         if (showhelp || (from is null && to is null && files is null))
         {
-            Console.Error.WriteLine(@"Syntax:
+            Console.Error.WriteLine(@$"Text encoding conversion tool
+Copyright (c) 2024 Olof Lagerkvist, LTR Data - https://ltr-data.se
+
+Syntax:
 txtcnv [-d:from] [-e:to] [files ...]
 
 Arguments from and to can be either numeric codepages or named text encodings.
 Default encoding is utf8 if not specified.
 
-Supported encodings:
-");
+List of encodings currently supported:
+Codepage {"Name",-24} Description");
 
             foreach (var encoding in Encoding.GetEncodings().OrderBy(enc => enc.CodePage))
             {
-                Console.Error.WriteLine($"{encoding.CodePage,-5}  {encoding.Name,-23}  {encoding.DisplayName}");
+                Console.Error.WriteLine($"{encoding.CodePage,-8} {encoding.Name,-24} {encoding.DisplayName}");
             }
 
             return 100;
@@ -95,13 +98,7 @@ Supported encodings:
 
         if (files is null || files.Length == 0)
         {
-            using var source = Console.OpenStandardInput();
-
-            Encoding
-                .CreateTranscodingStream(source, from, to)
-                .CopyTo(destination);
-
-            return 0;
+            files = ["-"];
         }
 
         foreach (var file in files)
