@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using LTRData.Extensions.CommandLine;
 
 namespace checksum;
@@ -46,8 +47,6 @@ public static class Program
         var search_option = SearchOption.TopDirectoryOnly;
         var output_code = false;
         var value = false;
-
-        var threads = new List<Thread>();
 
         foreach (var arg in cmd)
         {
@@ -100,17 +99,28 @@ public static class Program
                 }
                 else
                 {
-                    foreach (var file in arg.Value)
+                    var files = arg.Value;
+
+                    if (files.Length == 0)
                     {
-                        var thread = PrintCheckSumForFilesThread(alg, key, file, output_code, search_option);
-                        threads.Add(thread);
+                        files = ["-"];
+                    }
+
+                    if (files.Length == 1)
+                    {
+                        PrintCheckSumForFiles(alg, key, files[0], output_code, search_option);
+                    }
+                    else
+                    {
+                        Parallel.ForEach(files,
+                            file => PrintCheckSumForFiles(alg, key, file, output_code, search_option));
                     }
                 }
             }
             else
             {
                 Console.WriteLine(@"Generic .NET checksum calculation tool.
-Copyright (c) 2012-2023, Olof Lagerkvist, LTR Data.
+Copyright (c) 2012-2024, Olof Lagerkvist, LTR Data.
 http://ltr-data.se/opencode.html
 
 Syntax for calculating hash of file data:
@@ -139,20 +149,6 @@ checksum [-x:assembly] -l
                 return;
             }
         }
-
-        threads.ForEach(thread => thread.Join());
-
-        if (Debugger.IsAttached)
-        {
-            Console.ReadKey();
-        }
-    }
-
-    private static Thread PrintCheckSumForFilesThread(string alg, string? key, string arg, bool output_code, SearchOption search_option)
-    {
-        var thread = new Thread(() => PrintCheckSumForFiles(alg, key, arg, output_code, search_option));
-        thread.Start();
-        return thread;
     }
 
     public static void ListHashProviders()
@@ -182,7 +178,9 @@ checksum [-x:assembly] -l
         {
             foreach (var Type in Assembly.GetTypes())
             {
-                if (Type.IsClass && !Type.IsAbstract && typeof(HashAlgorithm).IsAssignableFrom(Type) && Type.GetConstructor(System.Type.EmptyTypes) is not null)
+                if (Type.IsClass
+                    && !Type.IsAbstract && typeof(HashAlgorithm).IsAssignableFrom(Type)
+                    && Type.GetConstructor(System.Type.EmptyTypes) is not null)
                 {
                     var name = Type.Name;
                     if (name == "Implementation" && Type.DeclaringType is not null)
