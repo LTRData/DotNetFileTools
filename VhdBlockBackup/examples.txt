@@ -1,0 +1,84 @@
+
+VhdBlockBackup
+
+Disk image block based backup tool, version 1.0
+Copyright (c) Olof Lagerkvist, LTR Data, 2023-2024
+
+This backup tool uses lists of block checksums for virtual machine disk image
+files. A block checksum list file (called metafile) created at source location
+is compared to corresponding file and target location to calculate amount of
+data that differs since last backup. That data is then transferred to a
+differencing image file with target image file as parent.
+
+Syntax
+------
+
+VhdBlockBackup --createmeta file1.vhdx [file2.vhdx ...]
+    Creates metadata file with block checksums. This is first step to prepare
+    for backup operations.
+
+VhdBlockBackup --check source.vhdx target.vhdx
+    Displays information about how much data would be copied with a --copy
+    operation. Also checks that meta data indicate compatible image file
+    sizes.
+
+VhdBlockBackup --copy [--createmeta] [--diffdir=directory] source.vhdx target.vhdx
+    Copies modified blocks from source.vhdx file to a new target_diff.vhdx.
+    The new diff image file will be created with target.vhdx as parent so that
+    modifications can be easily merged into target.vhdx later.
+
+    Note that meta block lists must already be present and up to date when
+    running --copy. If combined with --createmeta, source image block list
+    does not need to already exist. Instead, it will be created and blocks
+    detected to be different from target image will be copied during the
+    process. This could save time, particularly for images with large amounts
+    of changes.
+
+    Directory specified with --diffdir can be a separate directory where
+    target_diff.vhdx will be created.
+
+Prepare for first backup
+------------------------
+
+Consider a source disk image file C:\VM\disk0.vhdx that is backed up to a
+remote \\remote\c$\VM\disk0.vhdx. To prepare for this, first create meta files
+both on source and target servers:
+VhdBlockBackup --createmeta C:\VM\disk0.vhdx
+This creates C:\VM\disk0.vhdx.blocklist.bin that will be used later.
+
+On source server, to check how much data will be copied to target location:
+VhdBlockBackup --check C:\VM\disk0.vhdx \\remote\c$\VM\disk0.vhdx
+
+You can then copy changes like this:
+VhdBlockBackup --copy C:\VM\disk0.vhdx \\remote\c$\VM\disk0.vhdx
+This will not modify \\remote\c$\VM\disk0.vhdx. Instead, it creates a new
+differencing image file \\remote\c$\VM\disk0_diff.vhdx with original
+\\remote\c$\VM\disk0.vhdx as parent. The differencing image file could then
+be merged into its parent on remote server, or left like this to allow both
+original and new state of the image file to be preserved. If you merge it,
+remember to also move \\remote\c$\VM\disk0_diff.vhdx.blocklist.bin to replace
+\\remote\c$\VM\disk0.vhdx.blocklist.bin so that correct state of remote image
+is known to next backup run.
+
+With slow connections between source and target servers, this could take a lot
+of time and it is then recommended to use --diffdir switch to specify a
+temporary location of the differencing image file. The differencing image file
+could then be manually transferred to remote location in some other way.
+VhdBlockBackup --copy --diffdir=C:\backuptmp C:\VM\disk0.vhdx \\remote\c$\VM\disk0.vhdx
+This creates the differencing image file at C:\backuptmp\disk0_diff.vhdx
+instead of \\remote\c$\VM\disk0_diff.vhdx.
+
+Next backup
+-----------
+
+For next backup, you need to create a new C:\VM\disk0.vhdx.blocklist.bin at
+source server, and make sure that corresponding file at remote location is in
+sync with actual data in the image file at remote location. For example, at
+source server:
+VhdBlockBackup --createmeta C:\VM\disk0.vhdx
+
+At remote server, merge old backup into parent image and move meta file to
+reflect this:
+Merge-VHD C:\VM\disk0_diff.vhdx
+move /y C:\VM\disk0_diff.vhdx.blocklist.bin C:\VM\disk0.vhdx.blocklist.bin
+

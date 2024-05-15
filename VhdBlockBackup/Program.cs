@@ -7,11 +7,15 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using DiscUtils.Streams;
 
 namespace VhdBlockBackup;
 
 public static class Program
 {
+    private const int BlockSize = (int)(2 * Sizes.OneMiB);
+    private const int HashSize = 16;
+
     public enum Operation
     {
         None,
@@ -20,7 +24,7 @@ public static class Program
         Check
     };
 
-    public static async Task<int> Main(params string[] args)
+    public static int Main(params string[] args)
     {
         using var tokenSource = new CancellationTokenSource();
 
@@ -40,6 +44,8 @@ Aborting...");
 
         var operation = Operation.None;
 
+        var copyWithCreateMeta = false;
+
         string? diffdir = null;
 
         if (!cmds.TryGetValue("", out var files))
@@ -52,6 +58,12 @@ Aborting...");
             switch (cmd.Key)
             {
                 case "createmeta":
+                    if (cmds.ContainsKey("copy"))
+                    {
+                        copyWithCreateMeta = true;
+                        break;
+                    }
+
                     if (operation != Operation.None ||
                         files.Length == 0)
                     {
@@ -108,18 +120,25 @@ Aborting...");
                 case Operation.CreateMeta:
                     foreach (var file in files)
                     {
-                        await CreateMetaAsync(file, cancellationToken).ConfigureAwait(false);
+                        CreateMeta(file, blockCalulated: null, cancellationToken);
                     }
 
                     break;
 
                 case Operation.Check:
-                    await CopyDiffAsync(files[0], files[1], dryRun: true, diffdir: null, cancellationToken).ConfigureAwait(false);
+                    CopyDiff(files[0], files[1], dryRun: true, diffdir: null, cancellationToken: cancellationToken);
 
                     break;
 
                 case Operation.Copy:
-                    await CopyDiffAsync(files[0], files[1], dryRun: false, diffdir, cancellationToken).ConfigureAwait(false);
+                    if (copyWithCreateMeta)
+                    {
+                        CopyDiffWithCreateMeta(files[0], files[1], diffdir: diffdir, cancellationToken: cancellationToken);
+                    }
+                    else
+                    {
+                        CopyDiff(files[0], files[1], dryRun: false, diffdir: diffdir, cancellationToken: cancellationToken);
+                    }
 
                     break;
 
@@ -140,30 +159,49 @@ Aborting...");
         }
     }
 
-    private static async Task CopyDiffAsync(string source, string target, bool dryRun, string? diffdir, CancellationToken cancellationToken)
+    private static void CopyDiff(string source, string target, bool dryRun, string? diffdir, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        var sourceBlockListFile = $"{source}.blocklist.bin";
 
-        Console.WriteLine($"Opening {source}.blocklist.bin...");
-
-        var sourceMetafileTask = File.ReadAllBytesAsync($"{source}.blocklist.bin", cancellationToken);
+        var targetBlockListFile = $"{target}.blocklist.bin";
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        Console.WriteLine($"Opening {target}.blocklist.bin...");
+        Console.WriteLine($"Opening {sourceBlockListFile}...");
 
-        var targetMetafileTask = File.ReadAllBytesAsync($"{target}.blocklist.bin", cancellationToken);
+        var sourceMetafileTask = File.ReadAllBytesAsync(sourceBlockListFile, cancellationToken);
 
-        var sourceMetafile = await sourceMetafileTask.ConfigureAwait(false);
-        var targetMetafile = await targetMetafileTask.ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Console.WriteLine($"Opening {targetBlockListFile}...");
+
+        var targetMetafile = File.ReadAllBytes(targetBlockListFile);
+
+        var sourceMetafile = sourceMetafileTask.GetAwaiter().GetResult();
 
         if (sourceMetafile.Length != targetMetafile.Length)
         {
             Console.WriteLine(@$"Source and target meta files do not respresent the same image file size.
 Indicated size of source image: {sourceMetafile.LongLength / HashSize * BlockSize}
-Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSize}");
+Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSize}
+
+If source size has changed, target size should also be changed to the exact
+same size and target meta file regenerated before any --copy or --check
+operation.");
 
             return;
+        }
+
+        if (File.GetLastWriteTimeUtc(sourceBlockListFile) <
+            File.GetLastWriteTimeUtc(source))
+        {
+            throw new InvalidOperationException($"File '{sourceBlockListFile}' is older than '{source}'");
+        }
+
+        if (File.GetLastWriteTimeUtc(targetBlockListFile) <
+            File.GetLastWriteTimeUtc(target))
+        {
+            throw new InvalidOperationException($"File '{targetBlockListFile}' is older than '{target}'");
         }
 
         var diffBytes = 0L;
@@ -198,21 +236,29 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
 
         Console.WriteLine($"Opening {source}...");
 
-        using var sourceImage = VirtualDisk.OpenDisk(source, FileAccess.Read, useAsync: true);
+        using var sourceImage = VirtualDisk.OpenDisk(source, FileAccess.Read, useAsync: false);
 
         cancellationToken.ThrowIfCancellationRequested();
 
         Console.WriteLine($"Opening {target}...");
 
-        using var targetImage = VirtualDisk.OpenDisk(target, FileAccess.Read, useAsync: true);
+        using var targetImage = VirtualDisk.OpenDisk(target, FileAccess.Read, useAsync: false);
 
         var diff = Path.Join(diffdir ?? Path.GetDirectoryName(target), $"{Path.GetFileNameWithoutExtension(target.AsSpan())}_diff{Path.GetExtension(target.AsSpan())}");
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (File.Exists(diff))
+        {
+            Console.WriteLine($"Deleting existing {diff}...");
+            File.Delete(diff);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
         Console.WriteLine($"Creating {diff}...");
 
-        using var diffImage = targetImage.CreateDifferencingDisk(diff, useAsync: true);
+        using var diffImage = targetImage.CreateDifferencingDisk(diff, useAsync: false);
 
         var sourceStream = sourceImage.Content;
         var targetStream = diffImage.Content;
@@ -221,7 +267,7 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
 
         var copiedBytes = 0L;
 
-        var stopWatch = new Stopwatch();
+        var stopwatch = new Stopwatch();
 
         var messageUpdateTime = 0L;
 
@@ -229,7 +275,8 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (sourceMetafile.AsSpan(i * HashSize, HashSize).SequenceEqual(targetMetafile.AsSpan(i * HashSize, HashSize)))
+            if (sourceMetafile.AsSpan(i * HashSize, HashSize)
+                .SequenceEqual(targetMetafile.AsSpan(i * HashSize, HashSize)))
             {
                 continue;
             }
@@ -240,11 +287,11 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
                 sourceStream.Position =
                 targetStream.Position = (long)i * BlockSize;
 
-            if (stopWatch.IsRunning && copiedBytes > 0)
+            if (stopwatch.IsRunning && copiedBytes > 0)
             {
                 if (Environment.TickCount64 - messageUpdateTime > 400)
                 {
-                    var timeLeft = stopWatch.Elapsed * ((double)(diffBytes - copiedBytes) / copiedBytes);
+                    var timeLeft = stopwatch.Elapsed * ((double)(diffBytes - copiedBytes) / copiedBytes);
                     var finishTime = DateTime.Now + timeLeft;
                     Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
                     messageUpdateTime = Environment.TickCount64;
@@ -253,12 +300,14 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
             }
             else
             {
-                stopWatch.Start();
+                stopwatch.Start();
                 Console.Write($"Reading position {position}, {100d * copiedBytes / diffBytes:0.0}% done...                                                     \r");
                 messageUpdating = true;
             }
 
-            var read = await sourceStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var read = sourceStream.Read(buffer, 0, buffer.Length);
 
             if (read == 0)
             {
@@ -272,11 +321,9 @@ Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSiz
                 Console.Write($"Writ\r");
             }
 
-            var span = buffer.AsMemory(0, read);
+            targetStream.Write(buffer, 0, read);
 
-            await targetStream.WriteAsync(span, cancellationToken).ConfigureAwait(false);
-
-            copiedBytes += span.Length;
+            copiedBytes += read;
         }
 
         Console.WriteLine($@"
@@ -288,21 +335,106 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         Console.WriteLine($"Saving {diffMetafile}...");
 
-        var targetBlockListTask = File.WriteAllBytesAsync(diffMetafile, sourceMetafile, cancellationToken);
+        File.WriteAllBytes(diffMetafile, sourceMetafile);
 
-        await Task.WhenAll(flushTargetTask, targetBlockListTask).ConfigureAwait(false);
+        flushTargetTask.GetAwaiter().GetResult();
     }
 
-    private const int BlockSize = 2 << 20;
-    private const int HashSize = 16;
+    private static void CopyDiffWithCreateMeta(string source, string target, string? diffdir, CancellationToken cancellationToken)
+    {
+        var targetBlockListFile = $"{target}.blocklist.bin";
 
-    private static async Task CreateMetaAsync(string file, CancellationToken cancellationToken)
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Console.WriteLine($"Opening {targetBlockListFile}...");
+
+        var targetMetafile = File.ReadAllBytes(targetBlockListFile);
+
+        var sourceInfo = new FileInfo(source);
+
+        if (File.GetLastWriteTimeUtc(targetBlockListFile) <
+            sourceInfo.LastWriteTimeUtc)
+        {
+            throw new InvalidOperationException($"File '{targetBlockListFile}' is older than '{target}'");
+        }
+
+        var totalSize = sourceInfo.Length;
+
+        Console.WriteLine($"Total allocated image size {totalSize} ({SizeFormatting.FormatBytes(totalSize)}).");
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Console.WriteLine($"Opening {target}...");
+
+        using var targetImage = VirtualDisk.OpenDisk(target, FileAccess.Read, useAsync: false);
+
+        var diff = Path.Join(diffdir ?? Path.GetDirectoryName(target), $"{Path.GetFileNameWithoutExtension(target.AsSpan())}_diff{Path.GetExtension(target.AsSpan())}");
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (File.Exists(diff))
+        {
+            Console.WriteLine($"Deleting existing {diff}...");
+            File.Delete(diff);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Console.WriteLine($"Creating {diff}...");
+
+        using var diffImage = targetImage.CreateDifferencingDisk(diff, useAsync: false);
+
+        var targetStream = diffImage.Content;
+
+        var copiedBytes = 0L;
+
+        var sourceMetafile = CreateMeta(source, BlockCalculated, cancellationToken);
+
+        void BlockCalculated(ReadOnlySpan<byte> checksum, ReadOnlySpan<byte> block, long position)
+        {
+            var tagetChecksum = targetMetafile.AsSpan((int)(position / BlockSize * HashSize), HashSize);
+
+            if (checksum.SequenceEqual(tagetChecksum))
+            {
+                return;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Console.Write($"Writing position {position}\r");
+
+            lock (targetStream)
+            {
+                targetStream.Position = position;
+                targetStream.Write(block);
+            }
+
+            copiedBytes += block.Length;
+        }
+
+        Console.WriteLine($@"
+Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes. Flushing target...");
+
+        var flushTargetTask = targetStream.FlushAsync(cancellationToken);
+
+        var diffMetafile = $"{diff}.blocklist.bin";
+
+        Console.WriteLine($"Saving {diffMetafile}...");
+
+        File.WriteAllBytes(diffMetafile, sourceMetafile);
+
+        flushTargetTask.GetAwaiter().GetResult();
+    }
+
+    private delegate void BlockCalculatedDelegate(ReadOnlySpan<byte> checksum, ReadOnlySpan<byte> block, long position);
+
+    private static byte[] CreateMeta(string file, BlockCalculatedDelegate? blockCalulated, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         Console.WriteLine($"Opening {file}...");
 
-        using var image = VirtualDisk.OpenDisk(file, FileAccess.Read, useAsync: true);
+        using var image = VirtualDisk.OpenDisk(file, FileAccess.Read, useAsync: false);
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -312,19 +444,19 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         var stream = image.Content;
 
-        var parallelCount = Environment.ProcessorCount / 2;
+        var parallelCount = Math.Max(Environment.ProcessorCount / 2, 1);
 
         Console.WriteLine($"Using {parallelCount} threads x {BlockSize} bytes block size.");
 
         var buffer = new byte[BlockSize * parallelCount];
 
-        var blockCount = (stream.Length + BlockSize - 1) / BlockSize;
+        var blockCount = (int)((stream.Length + BlockSize - 1) / BlockSize);
 
         var checksums = new byte[HashSize * blockCount];
 
         var sizeTotal = stream.Length;
 
-        var stopWatch = new Stopwatch();
+        var stopwatch = new Stopwatch();
 
         var messageUpdateTime = 0L;
 
@@ -334,11 +466,11 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
             var position = stream.Position;
 
-            if (stopWatch.IsRunning && position > 0)
+            if (stopwatch.IsRunning && position > 0)
             {
                 if (Environment.TickCount64 - messageUpdateTime > 400)
                 {
-                    var timeLeft = stopWatch.Elapsed * ((double)(sizeTotal - position) / position);
+                    var timeLeft = stopwatch.Elapsed * ((double)(sizeTotal - position) / position);
                     var finishTime = DateTime.Now + timeLeft;
                     Console.Write($"Reading position {position} of {sizeTotal}, {100d * position / sizeTotal:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
                     messageUpdateTime = Environment.TickCount64;
@@ -346,11 +478,13 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
             }
             else
             {
-                stopWatch.Start();
+                stopwatch.Start();
                 Console.Write($"Reading position {position} of {sizeTotal}, {100d * position / sizeTotal:0.0}% done...\r");
             }
 
-            var read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var read = stream.Read(buffer, 0, buffer.Length);
 
             if (read == 0)
             {
@@ -368,7 +502,10 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
                 var span = buffer.AsSpan()[start..end];
                 Span<byte> hash = stackalloc byte[SHA1.HashSizeInBytes];
                 SHA1.HashData(span, hash);
-                hash[..HashSize].CopyTo(checksums.AsSpan((blockNumber + i) * HashSize));
+                Span<byte> checksum = checksums.AsSpan((blockNumber + i) * HashSize, HashSize);
+                hash[..HashSize].CopyTo(checksum);
+
+                blockCalulated?.Invoke(checksum, span, position + (i * BlockSize));
             });
 
             if (read < BlockSize)
@@ -377,26 +514,50 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
             }
         }
 
-        await metafile.WriteAsync(checksums, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        metafile.Write(checksums, 0, checksums.Length);
 
         Console.WriteLine($@"
 Finished at {stream.Position} of {sizeTotal}, {100d * stream.Position / sizeTotal:0.0}%. Flushing output...");
+
+        return checksums;
     }
 
     private static int ShowHelp()
     {
-        Console.WriteLine(@$"Syntax:
-VhdBlockBackup --createmeta file1 [file2 ...]
-    Creates metadata file with block checksums.
+        Console.WriteLine(@$"Disk image block based backup tool, version 1.0
+Copyright (c) Olof Lagerkvist, LTR Data, 2023-2024
+
+This backup tool uses lists of block checksums for virtual machine disk image
+files. A block checksum list file (called metafile) created at source location
+is compared to corresponding file and target location to calculate amount of
+data that differs since last backup. That data is then transferred to a
+differencing image file with target image file as parent.
+
+Syntax:
+VhdBlockBackup --createmeta file1.vhdx [file2.vhdx ...]
+    Creates metadata file with block checksums. This is first step to prepare
+    for backup operations.
 
 VhdBlockBackup --check source.vhdx target.vhdx
     Displays information about how much data would be copied with a --copy
     operation. Also checks that meta data indicate compatible image file
     sizes.
 
-VhdBlockBackup --copy [--diffdir=directory] source.vhdx target.vhdx
-    Copies modified blocks from one vhdx file to another. Meta block lists
-    must already be present and up to date.");
+VhdBlockBackup --copy [--createmeta] [--diffdir=directory] source.vhdx target.vhdx
+    Copies modified blocks from source.vhdx file to a new target_diff.vhdx.
+    The new diff image file will be created with target.vhdx as parent so that
+    modifications can be easily merged into target.vhdx later.
+
+    Note that meta block lists must already be present and up to date when
+    running --copy. If combined with --createmeta, the source image block
+    list does not need to already exist. Instead, it will be created and
+    blocks detected to be different from the target image will be copied
+    during the process. This could save time.
+
+    Directory specified with --diffdir can be a separate directory where the
+    target_diff.vhdx will be created.");
 
         return 100;
     }
