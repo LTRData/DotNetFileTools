@@ -6,9 +6,9 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using LTRData.Extensions.CommandLine;
+using LTRData.Extensions.Formatting;
 
 namespace checksum;
 
@@ -27,13 +27,7 @@ public static class Program
 #endif
 
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("Exception:");
-            while (ex is not null)
-            {
-                Console.WriteLine(ex.Message);
-                ex = ex.InnerException;
-            }
-
+            Console.WriteLine(ex.JoinMessages());
             Console.ResetColor();
         }
     }
