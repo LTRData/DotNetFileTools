@@ -536,6 +536,7 @@ data that differs since last backup. That data is then transferred to a
 differencing image file with target image file as parent.
 
 Syntax:
+
 VhdBlockBackup --createmeta file1.vhdx [file2.vhdx ...]
     Creates metadata file with block checksums. This is first step to prepare
     for backup operations.
@@ -551,12 +552,13 @@ VhdBlockBackup --copy [--createmeta] [--diffdir=directory] source.vhdx target.vh
     modifications can be easily merged into target.vhdx later.
 
     Note that meta block lists must already be present and up to date when
-    running --copy. If combined with --createmeta, the source image block
-    list does not need to already exist. Instead, it will be created and
-    blocks detected to be different from the target image will be copied
-    during the process. This could save time.
+    running --copy. If combined with --createmeta, source image block list
+    does not need to already exist. Instead, it will be created and blocks
+    detected to be different from target image will be copied during the
+    process. This could save time, particularly for images with large amounts
+    of changes.
 
-    Directory specified with --diffdir can be a separate directory where the
+    Directory specified with --diffdir can be a separate directory where
     target_diff.vhdx will be created.");
 
         return 100;
