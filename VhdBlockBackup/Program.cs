@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using DiscUtils.Streams;
+using System.Linq;
 
 namespace VhdBlockBackup;
 
@@ -118,7 +119,18 @@ Aborting...");
             switch (operation)
             {
                 case Operation.CreateMeta:
-                    foreach (var file in files)
+                    foreach (var file in files
+                        .SelectMany(file =>
+                        {
+                            var path = Path.GetDirectoryName(file);
+
+                            if (string.IsNullOrWhiteSpace(path))
+                            {
+                                path = ".";
+                            }
+
+                            return Directory.EnumerateFiles(path, Path.GetFileName(file));
+                        }))
                     {
                         CreateMeta(file, blockCalulated: null, cancellationToken);
                     }
@@ -539,7 +551,8 @@ Syntax:
 
 VhdBlockBackup --createmeta file1.vhdx [file2.vhdx ...]
     Creates metadata file with block checksums. This is first step to prepare
-    for backup operations.
+    for backup operations. With this operation, file names can contain
+    wildcards.
 
 VhdBlockBackup --check source.vhdx target.vhdx
     Displays information about how much data would be copied with a --copy

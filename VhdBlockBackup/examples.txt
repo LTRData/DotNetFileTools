@@ -15,7 +15,8 @@ Syntax
 
 VhdBlockBackup --createmeta file1.vhdx [file2.vhdx ...]
     Creates metadata file with block checksums. This is first step to prepare
-    for backup operations.
+    for backup operations. With this operation, file names can contain
+    wildcards.
 
 VhdBlockBackup --check source.vhdx target.vhdx
     Displays information about how much data would be copied with a --copy
