@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net6.0;net8.0;netstandard2.1;net48</TargetFrameworks>
+    <TargetFrameworks>net9.0;net8.0;netstandard2.1;net48</TargetFrameworks>
+    <RootNamespace>LTR.splitbystr</RootNamespace>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -16,6 +17,7 @@
     <PackageReference Include="System.IO.Pipelines" Version="6.0.*" Condition="'$(TargetFramework)' == 'netstandard2.1'" />
     <PackageReference Include="System.IO.Pipelines" Version="7.0.*" Condition="'$(TargetFramework)' == 'net6.0'" />
     <PackageReference Include="System.IO.Pipelines" Version="8.0.*" Condition="'$(TargetFramework)' == 'net8.0'" />
+    <PackageReference Include="System.IO.Pipelines" Version="9.0.*" Condition="'$(TargetFramework)' == 'net9.0'" />
   </ItemGroup>
 
 </Project>
