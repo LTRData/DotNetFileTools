@@ -2,11 +2,11 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net40;netstandard2.1;net9.0;net8.0</TargetFrameworks>
+    <TargetFrameworks>net48;netstandard2.1;net9.0;net8.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LTRLib.NativeIo" Version="*" />
+    <PackageReference Include="ArsenalRecon.ImageMounter" Version="*" />
     <PackageReference Include="LTRData.Extensions" Version="*" />
   </ItemGroup>
 

@@ -1,6 +1,9 @@
-﻿using LTRData.Extensions.CommandLine;
+﻿using Arsenal.ImageMounter.IO.Devices;
+using Arsenal.ImageMounter.IO.Native;
+using Arsenal.ImageMounter.IO.Streams;
+using LTRData.Extensions.Buffers;
+using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
-using LTRLib.IO;
 using System;
 using System.IO;
 using System.Linq;
@@ -149,7 +152,7 @@ public static class Program
                 if (path.StartsWith(@"\\?\", StringComparison.Ordinal) ||
                     path.StartsWith(@"\\.\", StringComparison.Ordinal))
                 {
-                    return Enumerable.Repeat(path, 1);
+                    return SingleValueEnumerable.Get(path);
                 }
 				
 				var dir = GetDirectoryOrCurrent(path);
@@ -171,23 +174,21 @@ public static class Program
         return string.IsNullOrWhiteSpace(path) ? "." : path;
     }
 
-    public static FileStream OpenStream(string path)
+    public static Stream OpenStream(string path)
     {
-#if NETCOREAPP
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (((path.StartsWith(@"\\?\", StringComparison.Ordinal) ||
+            path.StartsWith(@"\\.\", StringComparison.Ordinal)) &&
+            Path.GetExtension(path) == "") ||
+            path.StartsWith("/dev/", StringComparison.Ordinal))
         {
-            return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            return new DiskDevice(path, FileAccess.Read).GetRawDiskStream();
         }
-#endif
 
-        if (path.StartsWith(@"\\?\", StringComparison.Ordinal) ||
-            path.StartsWith(@"\\.\", StringComparison.Ordinal))
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return new DiskStream(path, FileAccess.Read);
+            return NativeFileIO.OpenFileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, Overlapped: false);
         }
-        else
-        {
-            return NativeFileIO.OpenFileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-        }
+
+        return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
     }
 }
