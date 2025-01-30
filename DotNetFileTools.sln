@@ -38,6 +38,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "reged", "reged\reged.csproj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "txtcnv", "txtcnv\txtcnv.csproj", "{FF431912-7B2C-4A15-ACD1-7F95E115C333}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestProject", "TestProject\TestProject.csproj", "{DDC05999-C143-45E7-978C-8640C904A7A6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -158,6 +160,14 @@ Global
 		{FF431912-7B2C-4A15-ACD1-7F95E115C333}.Release|Any CPU.Build.0 = Release|Any CPU
 		{FF431912-7B2C-4A15-ACD1-7F95E115C333}.Release|x86.ActiveCfg = Release|Any CPU
 		{FF431912-7B2C-4A15-ACD1-7F95E115C333}.Release|x86.Build.0 = Release|Any CPU
+		{DDC05999-C143-45E7-978C-8640C904A7A6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DDC05999-C143-45E7-978C-8640C904A7A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DDC05999-C143-45E7-978C-8640C904A7A6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DDC05999-C143-45E7-978C-8640C904A7A6}.Debug|x86.Build.0 = Debug|Any CPU
+		{DDC05999-C143-45E7-978C-8640C904A7A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DDC05999-C143-45E7-978C-8640C904A7A6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DDC05999-C143-45E7-978C-8640C904A7A6}.Release|x86.ActiveCfg = Release|Any CPU
+		{DDC05999-C143-45E7-978C-8640C904A7A6}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -541,11 +541,48 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
         }
     }
 
-    private static object ParseDataString(string dataString, RegistryValueType type)
+    public static object ParseDataString(string dataString, RegistryValueType type)
     {
         if (type is RegistryValueType.String or RegistryValueType.Link or RegistryValueType.ExpandString or RegistryValueType.MultiString)
         {
-            dataString = dataString.Replace(@"\""", @"""").Replace(@"\n", "\n").Replace(@"\\", @"\");
+            Span<char> parsedDataString = stackalloc char[dataString.Length];
+
+            var parsedLength = 0;
+
+            for (int i = 0; i < dataString.Length; i++, parsedLength++)
+            {
+                if (dataString[i] == '\\'
+                    && i != dataString.Length - 1)
+                {
+                    switch (dataString[i + 1])
+                    {
+                        case '\\':
+                            i++;
+                            parsedDataString[parsedLength] = '\\';
+                            continue;
+
+                        case '"':
+                            i++;
+                            parsedDataString[parsedLength] = '"';
+                            continue;
+
+                        case 'n':
+                            i++;
+                            parsedDataString[parsedLength] = '\n';
+                            continue;
+
+                        default:
+                            break;
+                    }
+                }
+
+                parsedDataString[parsedLength] = dataString[i];
+            }
+
+            if (parsedLength != dataString.Length)
+            {
+                dataString = parsedDataString.ToString();
+            }
 
             if (type is RegistryValueType.MultiString)
             {
