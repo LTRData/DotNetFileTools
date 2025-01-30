@@ -581,7 +581,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
 
             if (parsedLength != dataString.Length)
             {
-                dataString = parsedDataString.ToString();
+                dataString = parsedDataString.Slice(0, parsedLength).ToString();
             }
 
             if (type is RegistryValueType.MultiString)

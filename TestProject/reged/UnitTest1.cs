@@ -12,6 +12,8 @@ public class UnitTest1
 
         var parsed = global::reged.Program.ParseDataString(str, RegistryValueType.ExpandString);
 
+        Assert.IsType<string>(parsed);
+        Assert.Equal(expected.Length, ((string)parsed).Length);
         Assert.Equal(expected, parsed);
     }
 }
