@@ -1,4 +1,5 @@
-﻿using DiscUtils;
+﻿using Arsenal.ImageMounter.IO.Devices;
+using DiscUtils;
 using DiscUtils.Registry;
 using DiscUtils.Streams;
 using LTRData.Extensions.CommandLine;
@@ -143,13 +144,13 @@ public static class Program
             else
             {
                 var msg = @"Registry hive editing tool.
-Copyright (c) 2023 - 2024, LTR Data. https://ltr-data.se
+Copyright (c) 2023 - 2025, LTR Data. https://ltr-data.se
 
 Query syntax:
 reged --query --hive=filepath [--key=keypath] [--subkeys] [--value=valuename] [--binary]
 
 Add/update syntax:
-reged --add --hive=filepath --key=keypath [--subkeys] [--value=valuename [--type=valuetype] data | --binary ]
+reged --add --hive=filepath --key=keypath [--subkeys] [--value=valuename [--type=valuetype] data | --binary
 
 Remove syntax:
 reged --remove --hive=filepath [--key=keypath] [--subkeys] [--value=valuename [--type=valuetype] [data]]
@@ -207,9 +208,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             DiscUtils.FileSystems.SetupHelper.SetupFileSystems();
         }
 
-        using var image = imageFile is not null
-            ? (VirtualDisk.OpenDisk(imageFile, access) ?? new DiscUtils.Raw.Disk(imageFile, access))
-            : null;
+        using var image = OpenDiskImage(imageFile, access);
 
         var partitions = image?.Partitions;
 
@@ -795,4 +794,32 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
 
     public static string FormatRegistryString(string data)
         => $@"""{data.Replace(@"\", @"\\").Replace(@"""", @"\""")}""";
+
+    public static VirtualDisk? OpenDiskImage(string? path, FileAccess access)
+    {
+        if (path is null)
+        {
+            return null;
+        }
+
+        if (((path.StartsWith(@"\\?\", StringComparison.Ordinal) ||
+            path.StartsWith(@"\\.\", StringComparison.Ordinal)) &&
+            Path.GetExtension(path) == "") ||
+            path.StartsWith("/dev/", StringComparison.Ordinal))
+        {
+            var physicalDiskStream = new DiskDevice(path, FileAccess.Read).GetRawDiskStream();
+            try
+            {
+                return new DiscUtils.Raw.Disk(physicalDiskStream, Ownership.Dispose);
+            }
+            catch
+            {
+                physicalDiskStream.Dispose();
+                throw;
+            }
+        }
+
+        return VirtualDisk.OpenDisk(path, access)
+            ?? new DiscUtils.Raw.Disk(path, access);
+    }
 }
