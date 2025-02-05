@@ -114,7 +114,7 @@ public static class Program
             else
             {
                 Console.WriteLine(@"Generic .NET checksum calculation tool.
-Copyright (c) 2012-2024, Olof Lagerkvist, LTR Data.
+Copyright (c) 2012 - 2025, Olof Lagerkvist, LTR Data.
 http://ltr-data.se/opencode.html
 
 Syntax for calculating hash of file data:

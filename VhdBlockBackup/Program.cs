@@ -539,7 +539,7 @@ Finished at {stream.Position} of {sizeTotal}, {100d * stream.Position / sizeTota
     private static int ShowHelp()
     {
         Console.WriteLine(@$"Disk image block based backup tool, version 1.0
-Copyright (c) Olof Lagerkvist, LTR Data, 2023-2024
+Copyright (c) Olof Lagerkvist, LTR Data, 2023 - 2025
 
 This backup tool uses lists of block checksums for virtual machine disk image
 files. A block checksum list file (called metafile) created at source location

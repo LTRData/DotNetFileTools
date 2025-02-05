@@ -72,7 +72,7 @@ public static class Program
         if (showhelp || (from is null && to is null && files is null))
         {
             Console.Error.WriteLine(@$"Text encoding conversion tool
-Copyright (c) 2024 Olof Lagerkvist, LTR Data - https://ltr-data.se
+Copyright (c) 2024 - 2025 Olof Lagerkvist, LTR Data - https://ltr-data.se
 
 Syntax:
 txtcnv [-d:from] [-e:to] [files ...]

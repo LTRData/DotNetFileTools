@@ -3,7 +3,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Copyright>Copyright © Olof Lagerkvist, LTR Data 2012-2024</Copyright>
+    <Copyright>Copyright © Olof Lagerkvist, LTR Data 2012 - 2025</Copyright>
     <TargetFrameworks>net40;netstandard2.1;net9.0;net8.0</TargetFrameworks>
   </PropertyGroup>
 
