@@ -164,6 +164,8 @@ Aborting...");
         }
         catch (Exception ex)
         {
+            Console.WriteLine();
+
             Console.ForegroundColor = ConsoleColor.Red;
 #if DEBUG
             Console.WriteLine(ex);
@@ -171,6 +173,7 @@ Aborting...");
             Console.WriteLine(ex.JoinMessages());
 #endif
             Console.ResetColor();
+
             return ex.HResult;
         }
     }
@@ -198,7 +201,8 @@ Aborting...");
         if (sourceMetafile.Length != targetMetafile.Length)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine(@$"Source and target meta files do not respresent the same image file size.
+            Console.WriteLine(@$"
+Source and target meta files do not respresent the same image file size.
 Indicated size of source image: {sourceMetafile.LongLength / HashSize * BlockSize}
 Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSize}
 
@@ -362,11 +366,15 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        var sourceAllocatedSize = new FileInfo(source).Length;
+
+        Console.WriteLine($"Total allocated image size {sourceAllocatedSize} ({SizeFormatting.FormatBytes(sourceAllocatedSize)}).");
+
+        cancellationToken.ThrowIfCancellationRequested();
+
         var targetBlockListFile = $"{target}.blocklist.bin";
 
         Console.WriteLine($"Opening {targetBlockListFile}...");
-
-        var targetMetafile = File.ReadAllBytes(targetBlockListFile);
 
         if (File.GetLastWriteTimeUtc(targetBlockListFile) <
             File.GetLastWriteTimeUtc(target))
@@ -374,12 +382,10 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
             throw new InvalidOperationException($"File '{targetBlockListFile}' is older than '{target}'");
         }
 
-        var totalSize = new FileInfo(source).Length;
+        var targetMetafile = File.ReadAllBytes(targetBlockListFile);
 
-	    var targetSize = targetMetafile.LongLength / HashSize * BlockSize;
+        var targetSize = targetMetafile.LongLength / HashSize * BlockSize;
 	
-        Console.WriteLine($"Total allocated image size {totalSize} ({SizeFormatting.FormatBytes(totalSize)}).");
-
         cancellationToken.ThrowIfCancellationRequested();
 
         using (var sourceDisk = VirtualDisk.OpenDisk(source, FileAccess.Read))
@@ -389,7 +395,10 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
             if (sourceSize != targetSize)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(@$"Target image file does not respresent the same virtual disk size as source image.
+                Console.WriteLine(@$"
+Source image file does not respresent the same virtual disk size as indicated
+by target meta file.
+
 Virtual disk size of source image: {sourceSize}
 Virtual disk size of target image: {targetSize}
 
