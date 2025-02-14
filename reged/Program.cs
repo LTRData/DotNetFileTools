@@ -32,7 +32,11 @@ public static class Program
         catch (Exception ex)
         {
             Console.ForegroundColor = ConsoleColor.Red;
+#if DEBUG
+            Console.Error.WriteLine(ex);
+#else
             Console.Error.WriteLine(ex.JoinMessages());
+#endif
             Console.ResetColor();
             return ex.HResult;
         }
@@ -257,128 +261,16 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
         var key = keyPath is null
             ? hive.Root : hive.Root.OpenSubKey(keyPath);
 
-        if (key is null && opMode == OpMode.Add)
+        if (!binaryOutput && key is not null)
         {
-            key = hive.Root.CreateSubKey(keyPath);
-
-            if (key is null)
-            {
-                throw new IOException($"Failed to create key '{keyPath}' in hive '{hiveFile}'");
-            }
-        }
-
-        if (key is null && opMode != OpMode.Remove)
-        {
-            throw new IOException($"Key '{keyPath}' not found in hive '{hiveFile}'");
-        }
-
-        if (!binaryOutput)
-        {
-            Console.WriteLine($@"\{keyPath}");
+            Console.WriteLine($@"\{key.Name}");
         }
 
         if (opMode == OpMode.Query)
         {
-            void QueryKey(RegistryKey key)
+            if (key is null)
             {
-                if (valueName is null)
-                {
-                    foreach (var value in key.GetValueNames())
-                    {
-                        try
-                        {
-                            if (binaryOutput)
-                            {
-                                if (key.GetRegistryValue(value) is { } valueObj)
-                                {
-                                    var data = valueObj.RawValue;
-                                    Console.OpenStandardOutput().Write(data, 0, data.Length);
-                                }
-                            }
-                            else
-                            {
-                                var data = key.GetValue(value, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-
-                                var msg = $"    {value,-20}  {FormatRegistryValue(data, key.GetValueType(value))}";
-
-                                Console.WriteLine(msg);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.Error.WriteLine($"Value '{value}' in key '{key.Name}' failed: {ex.JoinMessages()}");
-                            Console.ResetColor();
-                        }
-                    }
-                }
-                else
-                {
-                    if (binaryOutput)
-                    {
-                        if (key.GetRegistryValue(valueName) is { } valueObj)
-                        {
-                            var data = valueObj.RawValue;
-                            Console.OpenStandardOutput().Write(data, 0, data.Length);
-                        }
-                    }
-                    else
-                    {
-                        if (key.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is { } data)
-                        {
-                            var msg = $"    {valueName,-20}  {FormatRegistryValue(data, key.GetValueType(valueName))}";
-
-                            Console.WriteLine(msg);
-                        }
-                    }
-                }
-
-                if (!binaryOutput)
-                {
-                    Console.WriteLine();
-                }
-
-                if (recursive || valueName is null)
-                {
-                    foreach (var subkey in key.SubKeys)
-                    {
-                        if (!binaryOutput)
-                        {
-                            Console.WriteLine($@"\{subkey.Name}");
-                        }
-
-                        if (recursive)
-                        {
-                            QueryKey(subkey);
-                        }
-                    }
-                }
-            }
-
-            void ListUsers(RegistryKey key)
-            {
-                var namesKey = key.OpenSubKey("Names")
-                    ?? throw new DirectoryNotFoundException("Registry key 'Names' not found");
-
-                foreach (var name in namesKey.SubKeys)
-                {
-                    try
-                    {
-                        var uid = (int)name.GetValueType(null);
-
-                        var msg = $"{uid,-5} {name.KeyName}";
-
-                        Console.WriteLine(msg);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.Error.WriteLine($"User '{name.Name}' failed: {ex.JoinMessages()}");
-                        Console.ResetColor();
-                    }
-                }
-
-                Console.WriteLine();
+                throw new IOException($"Key '{keyPath}' not found in hive '{hiveFile}'");
             }
 
             if (listUsers)
@@ -387,7 +279,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             }
             else
             {
-                QueryKey(key!);
+                QueryKey(key!, valueName, binaryOutput, recursive);
             }
         }
         else if (opMode == OpMode.Remove)
@@ -419,63 +311,10 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
 
             if (key is null)
             {
-                throw new IOException($"Key '{keyPath}' not found");
+                throw new IOException($"Key '{keyPath}' not found in hive '{hiveFile}'");
             }
 
-            var deleteCount = 0;
-
-            void RemoveValueFromKey(RegistryKey key)
-            {
-                if ((dataString is not null || type.HasValue)
-                    && key.GetRegistryValue(valueName) is { } value)
-                {
-                    if ((!type.HasValue || type.Value == value.DataType)
-                        && (dataString is null
-                        || (value.DataType is RegistryValueType.String or RegistryValueType.Link or RegistryValueType.ExpandString or RegistryValueType.Dword or RegistryValueType.Qword or RegistryValueType.DwordBigEndian
-                        && ParseDataString(dataString, value.DataType) == value.Value)
-                        || (value.Value is string[] strings
-                        && strings.Contains((string)ParseDataString(dataString, RegistryValueType.String)))
-                        || (value.Value is byte[] bytes
-                        && bytes.SequenceEqual((byte[])ParseDataString(dataString, RegistryValueType.Binary)))))
-                    {
-                        if (dataString is not null
-                            && value.DataType == RegistryValueType.MultiString)
-                        {
-                            var deleteLine = (string)ParseDataString(dataString, RegistryValueType.String);
-
-                            var lines = (string[])value.Value;
-                            var newLines = lines
-                                .Where(line => line != deleteLine)
-                                .ToArray();
-
-                            if (newLines.Length < lines.Length)
-                            {
-                                value.SetValue(newLines, RegistryValueType.MultiString);
-                                deleteCount++;
-                                Console.WriteLine($@"Removed matching lines from value '{valueName}' from '\{key.Name}'");
-                            }
-                        }
-                        else
-                        {
-                            key.DeleteValue(valueName);
-                            deleteCount++;
-                            Console.WriteLine($@"Removed value '{valueName}' from '\{key.Name}'");
-                        }
-                    }
-                }
-                else if (key.DeleteValue(valueName, throwOnMissingValue: false))
-                {
-                    deleteCount++;
-                    Console.WriteLine($@"Removed value from '\{key.Name}'");
-                }
-
-                foreach (var subkey in key.SubKeys)
-                {
-                    RemoveValueFromKey(subkey);
-                }
-            }
-
-            RemoveValueFromKey(key);
+            var deleteCount = RemoveValueFromKey(key, valueName, dataString, type);
 
             Console.WriteLine($"Found and removed {deleteCount} values");
 
@@ -483,7 +322,14 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
         }
         else if (opMode == OpMode.Add)
         {
-            if (valueName is null || key is null)
+            key ??= hive.Root.CreateSubKey(keyPath);
+
+            if (key is null)
+            {
+                throw new IOException($"Failed to create key '{keyPath}' in hive '{hiveFile}'");
+            }
+
+            if (valueName is null)
             {
                 return 0;
             }
@@ -517,6 +363,163 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
         }
 
         return 0;
+    }
+
+    private static long RemoveValueFromKey(RegistryKey key, string? valueName, string? dataString, RegistryValueType? type)
+    {
+        var deleteCount = 0L;
+
+        if ((dataString is not null || type.HasValue)
+            && key.GetRegistryValue(valueName) is { } value)
+        {
+            if ((!type.HasValue || type.Value == value.DataType)
+                && (dataString is null
+                || (value.DataType is RegistryValueType.String or RegistryValueType.Link or RegistryValueType.ExpandString or RegistryValueType.Dword or RegistryValueType.Qword or RegistryValueType.DwordBigEndian
+                && ParseDataString(dataString, value.DataType) == value.Value)
+                || (value.Value is string[] strings
+                && strings.Contains((string)ParseDataString(dataString, RegistryValueType.String)))
+                || (value.Value is byte[] bytes
+                && bytes.SequenceEqual((byte[])ParseDataString(dataString, RegistryValueType.Binary)))))
+            {
+                if (dataString is not null
+                    && value.DataType == RegistryValueType.MultiString)
+                {
+                    var deleteLine = (string)ParseDataString(dataString, RegistryValueType.String);
+
+                    var lines = (string[])value.Value;
+                    var newLines = lines
+                        .Where(line => line != deleteLine)
+                        .ToArray();
+
+                    if (newLines.Length < lines.Length)
+                    {
+                        value.SetValue(newLines, RegistryValueType.MultiString);
+                        deleteCount++;
+                        Console.WriteLine($@"Removed matching lines from value '{valueName}' from '\{key.Name}'");
+                    }
+                }
+                else
+                {
+                    key.DeleteValue(valueName);
+                    deleteCount++;
+                    Console.WriteLine($@"Removed value '{valueName}' from '\{key.Name}'");
+                }
+            }
+        }
+        else if (key.DeleteValue(valueName, throwOnMissingValue: false))
+        {
+            deleteCount++;
+            Console.WriteLine($@"Removed value from '\{key.Name}'");
+        }
+
+        foreach (var subkey in key.SubKeys)
+        {
+            deleteCount += RemoveValueFromKey(subkey, valueName, dataString, type);
+        }
+
+        return deleteCount;
+    }
+
+    private static void ListUsers(RegistryKey key)
+    {
+        var namesKey = key.OpenSubKey("Names")
+            ?? throw new DirectoryNotFoundException("Registry key 'Names' not found");
+
+        foreach (var name in namesKey.SubKeys)
+        {
+            try
+            {
+                var uid = (int)name.GetValueType(null);
+
+                var msg = $"{uid,-5} {name.KeyName}";
+
+                Console.WriteLine(msg);
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine($"User '{name.Name}' failed: {ex.JoinMessages()}");
+                Console.ResetColor();
+            }
+        }
+
+        Console.WriteLine();
+    }
+
+    private static void QueryKey(RegistryKey key, string? valueName, bool binaryOutput, bool recursive)
+    {
+        if (valueName is null)
+        {
+            foreach (var value in key.GetValueNames())
+            {
+                try
+                {
+                    if (binaryOutput)
+                    {
+                        if (key.GetRegistryValue(value) is { } valueObj)
+                        {
+                            var data = valueObj.RawValue;
+                            Console.OpenStandardOutput().Write(data, 0, data.Length);
+                        }
+                    }
+                    else
+                    {
+                        var data = key.GetValue(value, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+
+                        var msg = $"    {value,-20}  {FormatRegistryValue(data, key.GetValueType(value))}";
+
+                        Console.WriteLine(msg);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Error.WriteLine($"Value '{value}' in key '{key.Name}' failed: {ex.JoinMessages()}");
+                    Console.ResetColor();
+                }
+            }
+        }
+        else
+        {
+            if (binaryOutput)
+            {
+                if (key.GetRegistryValue(valueName) is { } valueObj)
+                {
+                    var data = valueObj.RawValue;
+                    Console.OpenStandardOutput().Write(data, 0, data.Length);
+                }
+            }
+            else
+            {
+                if (key.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is { } data)
+                {
+                    var msg = $"    {valueName,-20}  {FormatRegistryValue(data, key.GetValueType(valueName))}";
+
+                    Console.WriteLine(msg);
+                }
+            }
+        }
+
+        if (!binaryOutput)
+        {
+            Console.WriteLine();
+        }
+
+        if (recursive || valueName is null)
+        {
+            foreach (var subkey in key.SubKeys)
+            {
+                if (!binaryOutput)
+                {
+                    Console.WriteLine($@"\{subkey.Name}");
+                }
+
+                if (recursive)
+                {
+                    QueryKey(subkey, valueName, binaryOutput, recursive);
+                }
+            }
+        }
     }
 
     private static byte[] ReadAllStdIn()
