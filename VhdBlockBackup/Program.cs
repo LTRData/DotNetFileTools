@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DiscUtils.Streams;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 
 namespace VhdBlockBackup;
 
@@ -22,7 +23,8 @@ public static class Program
         None,
         CreateMeta,
         Copy,
-        Check
+        Check,
+        Validate
     };
 
     public static int Main(params string[] args)
@@ -46,6 +48,7 @@ Aborting...");
         var operation = Operation.None;
 
         var copyWithCreateMeta = false;
+        var validateAndCreateMeta = false;
 
         string? diffdir = null;
 
@@ -64,6 +67,11 @@ Aborting...");
                         copyWithCreateMeta = true;
                         break;
                     }
+                    else if (cmds.ContainsKey("validate"))
+                    {
+                        validateAndCreateMeta = true;
+                        break;
+                    }
 
                     if (operation != Operation.None ||
                         files.Length == 0)
@@ -72,6 +80,16 @@ Aborting...");
                     }
 
                     operation = Operation.CreateMeta;
+                    break;
+
+                case "validate":
+                    if (operation != Operation.None ||
+                        files.Length == 0)
+                    {
+                        return ShowHelp();
+                    }
+
+                    operation = Operation.Validate;
                     break;
 
                 case "check":
@@ -118,6 +136,49 @@ Aborting...");
         {
             switch (operation)
             {
+                case Operation.Validate:
+                    foreach (var file in files
+                        .SelectMany(file =>
+                        {
+                            var path = Path.GetDirectoryName(file);
+
+                            if (string.IsNullOrWhiteSpace(path))
+                            {
+                                path = ".";
+                            }
+
+                            return Directory.EnumerateFiles(path, Path.GetFileName(file));
+                        }))
+                    {
+                        Console.WriteLine($"Opening {file}.blocklist.bin...");
+
+                        var existing = File.ReadAllBytes($"{file}.blocklist.bin");
+
+                        var diffBlocks = 0L;
+
+                        CreateMeta(file,
+                                   blockCalulated: (checksum, block, position) => ValidateExisting(existing, checksum, position, ref diffBlocks),
+                                   dryRun: !validateAndCreateMeta,
+                                   cancellationToken: cancellationToken);
+
+                        if (diffBlocks != 0)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Magenta;
+                            Console.WriteLine(@$"
+Found {diffBlocks} blocks where checksums are different from existing meta file");
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine(@$"
+All blocks have matching checksums in existing meta file");
+                        }
+
+                        Console.ResetColor();
+                    }
+
+                    break;
+
                 case Operation.CreateMeta:
                     foreach (var file in files
                         .SelectMany(file =>
@@ -132,13 +193,20 @@ Aborting...");
                             return Directory.EnumerateFiles(path, Path.GetFileName(file));
                         }))
                     {
-                        CreateMeta(file, blockCalulated: null, cancellationToken);
+                        CreateMeta(file,
+                                   blockCalulated: null,
+                                   dryRun: false,
+                                   cancellationToken: cancellationToken);
                     }
 
                     break;
 
                 case Operation.Check:
-                    CopyDiff(files[0], files[1], dryRun: true, diffdir: null, cancellationToken: cancellationToken);
+                    CopyDiff(files[0],
+                             files[1],
+                             dryRun: true,
+                             diffdir: null,
+                             cancellationToken: cancellationToken);
 
                     break;
 
@@ -176,6 +244,24 @@ Aborting...");
 
             return ex.HResult;
         }
+    }
+
+    private static void ValidateExisting(ReadOnlySpan<byte> existing, ReadOnlySpan<byte> checksum, long position, ref long diffBlocks)
+    {
+        var targetMetaFilePosition = (int)(position / BlockSize * HashSize);
+
+        var existingChecksum = existing.Slice(targetMetaFilePosition, HashSize);
+
+        if (checksum.SequenceEqual(existingChecksum))
+        {
+            return;
+        }
+
+        Console.WriteLine(@$"
+Diff at position {position}
+");
+
+        diffBlocks++;
     }
 
     private static void CopyDiff(string source, string target, bool dryRun, string? diffdir, CancellationToken cancellationToken)
@@ -437,7 +523,7 @@ operation.");
 
         var copiedBytes = 0L;
 
-        var sourceMetafile = CreateMeta(source, BlockCalculated, cancellationToken);
+        var sourceMetafile = CreateMeta(source, BlockCalculated, false, cancellationToken);
 
         void BlockCalculated(ReadOnlySpan<byte> checksum, ReadOnlySpan<byte> block, long position)
         {
@@ -479,7 +565,10 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
     private delegate void BlockCalculatedDelegate(ReadOnlySpan<byte> checksum, ReadOnlySpan<byte> block, long position);
 
-    private static byte[] CreateMeta(string file, BlockCalculatedDelegate? blockCalulated, CancellationToken cancellationToken)
+    private static byte[] CreateMeta(string file,
+                                     BlockCalculatedDelegate? blockCalulated,
+                                     bool dryRun,
+                                     CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -489,9 +578,12 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        Console.WriteLine($"Creating {file}.blocklist.bin...");
+        if (!dryRun)
+        {
+            Console.WriteLine($"Creating {file}.blocklist.bin...");
+        }
 
-        using var metafile = File.Create($"{file}.blocklist.bin");
+        using var metafile = dryRun ? null : File.Create($"{file}.blocklist.bin");
 
         var stream = image.Content;
 
@@ -511,7 +603,7 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         var messageUpdateTime = 0L;
 
-        for (; ;)
+        for (; ; )
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -565,12 +657,15 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
             }
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
+        if (metafile is not null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
 
-        metafile.Write(checksums, 0, checksums.Length);
-
-        Console.WriteLine($@"
+            Console.WriteLine($@"
 Finished at {stream.Position} of {sizeTotal}, {100d * stream.Position / sizeTotal:0.0}%. Flushing output...");
+
+            metafile.Write(checksums, 0, checksums.Length);
+        }
 
         return checksums;
     }
@@ -592,6 +687,13 @@ VhdBlockBackup --createmeta file1.vhdx [file2.vhdx ...]
     Creates metadata file with block checksums. This is first step to prepare
     for backup operations. With this operation, file names can contain
     wildcards.
+
+VhdBlockBackup --validate [--createmeta] file1.vhdx [file2.vhdx ...]
+    Calculates block checksums and compares them with existing metadata file
+    contents.
+
+    If combined with --createmeta, updates the existing meta file with the
+    new calculated checksums.
 
 VhdBlockBackup --check source.vhdx target.vhdx
     Displays information about how much data would be copied with a --copy
