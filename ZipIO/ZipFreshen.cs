@@ -129,6 +129,7 @@ write time of the zip file is reset to original timestamp.
                         !entry.zipEntryFullName.EndsWith("/") &&
                         !entry.zipEntryFullName.EndsWith("\\") &&
                         (operation == FreshenOrReplaceOperation.Replace ||
+                        !entry.sourcePath.Exists ||
                         (entry.sourceTimeStamp - entry.zipEntry.LastWriteTime.UtcDateTime).TotalSeconds > 2)))
                 {
                     if (!entry.sourcePath.Exists)
