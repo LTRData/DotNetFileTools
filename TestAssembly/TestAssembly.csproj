@@ -3,8 +3,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Copyright>Copyright © Olof Lagerkvist, LTR Data 2015-2022</Copyright>
-    <TargetFrameworks>net48;netstandard2.1;net9.0;net8.0</TargetFrameworks>
+    <Copyright>Copyright © Olof Lagerkvist, LTR Data 2015-2025</Copyright>
+    <TargetFrameworks>net48;netstandard2.1;net9.0;net8.0;net6.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>
