@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net9.0;net48;netstandard2.1</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LTRData.Extensions" Version="*" />
+    <PackageReference Include="ArsenalRecon.ImageMounter" Version="*" />
+    <PackageReference Include="System.Reflection.Metadata" Version="*" />
+  </ItemGroup>
+  
+</Project>
