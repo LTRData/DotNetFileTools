@@ -12,6 +12,8 @@
     <PackageReference Include="LTRData.Extensions" Version="*" />
     <PackageReference Include="ArsenalRecon.ImageMounter" Version="*" />
     <PackageReference Include="System.Reflection.Metadata" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils.Wim" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils" Version="*" />
   </ItemGroup>
   
 </Project>
