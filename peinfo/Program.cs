@@ -88,7 +88,8 @@ peinfo --wim=imagefile --index=wimindex filepath1 [filepath2 ...]");
 
         using var part = vdisk is not null
             ? partNo != 0
-            ? vdisk.Partitions[partNo - 1].Open()
+            ? (vdisk.Partitions?.Partitions?.ElementAtOrDefault(partNo - 1)?.Open()
+                ?? throw new DriveNotFoundException($"Partition {partNo} not found"))
             : vdisk.Content
             : null;
 
