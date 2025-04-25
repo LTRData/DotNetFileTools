@@ -5,6 +5,11 @@ using DiscUtils.Wim;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
 using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography;
+using System.Security.Cryptography.Pkcs;
+using DiscUtils.Streams;
 
 namespace peinfo;
 
@@ -124,33 +129,25 @@ peinfo --wim=imagefile --index=wimindex filepath1 [filepath2 ...]");
 
     public static unsafe void ProcessFile(Stream file)
     {
-        if (!file.CanSeek)
-        {
-            var bufferStream = new MemoryStream((int)(file.Length - file.Position));
-            file.CopyTo(bufferStream);
-            bufferStream.Position = 0;
+        var fileData = file.ReadExactly((int)(file.Length - file.Position));
 
-            file = bufferStream;
-        }
-
-        using var reader = new PEReader(file);
+        using var reader = new PEReader([.. fileData]);
 
         var coffHeader = reader.PEHeaders.CoffHeader;
 
         Console.WriteLine();
         Console.WriteLine("MZ header:");
-        Console.WriteLine($"{"Machine",-24}" + coffHeader.Machine);
-        Console.WriteLine($"{"Characteristics",-24}" + coffHeader.Characteristics);
-
-        if (reader.PEHeaders.IsCoffOnly)
-        {
-            return;
-        }
+        Console.WriteLine($"{"Machine",-24}{coffHeader.Machine}");
+        Console.WriteLine($"{"Characteristics",-24}{coffHeader.Characteristics}");
 
         Console.WriteLine();
         Console.WriteLine("PE header:");
 
-        if (reader.PEHeaders.IsDll)
+        if (reader.PEHeaders.IsCoffOnly)
+        {
+            Console.WriteLine($"{"Type",-24}No executable sections");
+        }
+        else if (reader.PEHeaders.IsDll)
         {
             Console.WriteLine($"{"Type",-24}DLL");
         }
@@ -177,8 +174,6 @@ peinfo --wim=imagefile --index=wimindex filepath1 [filepath2 ...]");
 
         try
         {
-            var image = reader.GetEntireImage();
-            var fileData = new ReadOnlySpan<byte>(image.Pointer, image.Length);
             var fileVersion = new NativeFileVersion(fileData);
 
             Console.WriteLine();
@@ -208,6 +203,110 @@ peinfo --wim=imagefile --index=wimindex filepath1 [filepath2 ...]");
 
             Console.WriteLine($"{"Flags",-24}{corHeader.Flags}");
             Console.WriteLine($"{"Runtime version",-24}{corHeader.MajorRuntimeVersion}.{corHeader.MinorRuntimeVersion}");
+        }
+
+        var securitySection = NativePE.GetRawFileCertificateSection(fileData);
+
+        if (!securitySection.IsEmpty)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Authenticode signature:");
+
+            var header = MemoryMarshal.Read<NativePE.WinCertificateHeader>(securitySection);
+
+            if (header.Revision == 0x200 && header.CertificateType == NativePE.CertificateType.PkcsSignedData)
+            {
+                var blob = NativePE.GetCertificateBlob(securitySection);
+
+                var signed = new SignedCms();
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+                signed.Decode(blob);
+#else
+                signed.Decode(blob.ToArray());
+#endif
+
+                for (; ; )
+                {
+                    var signerInfo = signed.SignerInfos[0];
+
+                    if (signerInfo.Certificate is not { } cert)
+                    {
+                        break;
+                    }
+
+                    var certSubjectName = cert.Subject;
+
+                    Console.WriteLine($"{"Signed by",-24}{certSubjectName}");
+
+                    if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
+                        || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))
+                        || NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"File signature is valid.");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"File signature is not valid. File contents modified after signing.");
+                        Console.ResetColor();
+                    }
+
+                    try
+                    {
+                        signed.CheckSignature(verifySignatureOnly: true);
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"Certificate signature valid.");
+                        Console.ResetColor();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"Certificate signature error: {ex.JoinMessages()}");
+                        Console.ResetColor();
+                    }
+
+                    using var chain = new X509Chain();
+                    chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                    chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.IgnoreCtlNotTimeValid | X509VerificationFlags.IgnoreNotTimeNested;
+
+                    if (chain.Build(cert))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"Certificate is valid.");
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        foreach (var certChainStatus in chain.ChainStatus)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"Certificate validation error: {certChainStatus.Status}: {certChainStatus.StatusInformation}");
+                            Console.ResetColor();
+                        }
+                    }
+
+                    if (signerInfo.UnsignedAttributes
+                        .OfType<CryptographicAttributeObject>()
+                        .Where(o => o.Oid.Value!.StartsWith("1.3.6.1.4.1.311.2.4.", StringComparison.Ordinal))
+                        .SelectMany(o => o.Values.OfType<AsnEncodedData>())
+                        .Select(o => o.RawData)
+                        .FirstOrDefault() is not { } subData)
+                    {
+                        break;
+                    }
+
+                    signed.Decode(subData);
+                }
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"Unsupported authenticode signature");
+                Console.ResetColor();
+            }
         }
     }
 }
