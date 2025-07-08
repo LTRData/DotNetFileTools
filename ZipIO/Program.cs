@@ -537,7 +537,8 @@ Extract contents of zip archive to a directory.
 
         if (Uri.IsWellFormedUriString(args[0], UriKind.Absolute))
         {
-            using var archive = new ZipArchive(new HttpClient().GetStreamAsync(args[0]).GetAwaiter().GetResult(), ZipArchiveMode.Read);
+            using var httpClient = new HttpClient();
+            using var archive = new ZipArchive(httpClient.GetStreamAsync(args[0]).GetAwaiter().GetResult(), ZipArchiveMode.Read);
 
             if (overwriteFiles)
             {
