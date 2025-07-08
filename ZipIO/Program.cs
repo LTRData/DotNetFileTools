@@ -535,17 +535,37 @@ Extract contents of zip archive to a directory.
             return 0;
         }
 
-        if (overwriteFiles)
+        if (Uri.IsWellFormedUriString(args[0], UriKind.Absolute))
         {
+            using var archive = new ZipArchive(new HttpClient().GetStreamAsync(args[0]).GetAwaiter().GetResult(), ZipArchiveMode.Read);
+
+            if (overwriteFiles)
+            {
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-            ZipFile.ExtractToDirectory(args[0], args[1], overwriteFiles);
+                archive.ExtractToDirectory(args[1], overwriteFiles);
 #else
-            throw new PlatformNotSupportedException("Overwrite mode is not supported on .NET Framework 4.x or .NET Standard 2.0 or lower. Required: .NET Core or .NET 5.0 or later.");
+                throw new PlatformNotSupportedException("Overwrite mode is not supported on .NET Framework 4.x or .NET Standard 2.0 or lower. Required: .NET Core or .NET 5.0 or later.");
 #endif
+            }
+            else
+            {
+                archive.ExtractToDirectory(args[1]);
+            }
         }
         else
         {
-            ZipFile.ExtractToDirectory(args[0], args[1]);
+            if (overwriteFiles)
+            {
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+                ZipFile.ExtractToDirectory(args[0], args[1], overwriteFiles);
+#else
+            throw new PlatformNotSupportedException("Overwrite mode is not supported on .NET Framework 4.x or .NET Standard 2.0 or lower. Required: .NET Core or .NET 5.0 or later.");
+#endif
+            }
+            else
+            {
+                ZipFile.ExtractToDirectory(args[0], args[1]);
+            }
         }
 
         return 0;
