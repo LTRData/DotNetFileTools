@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 
 #pragma warning disable IDE0079 // Remove unnecessary suppression
@@ -107,6 +109,8 @@ Show contents of files within zip archive.
 
         using var archive = args[0] == "-"
             ? new ZipArchive(Console.OpenStandardInput(), ZipArchiveMode.Read)
+            : Uri.IsWellFormedUriString(args[0], UriKind.Absolute)
+            ? new ZipArchive(new HttpClient().GetStreamAsync(args[0]).GetAwaiter().GetResult(), ZipArchiveMode.Read)
             : ZipFile.OpenRead(args[0]);
 
         foreach (var arg in args.Length < 2 ? SingleValueEnumerable.Get("") : args.Skip(1))
@@ -192,6 +196,11 @@ Show contents of zip archive.
                 return SingleValueEnumerable.Get("-");
             }
 
+            if (Uri.IsWellFormedUriString(path, UriKind.Absolute))
+            {
+                return SingleValueEnumerable.Get(path);
+            }
+
             var dir = Path.GetDirectoryName(path);
             if (string.IsNullOrWhiteSpace(dir))
             {
@@ -215,6 +224,8 @@ Show contents of zip archive.
             {
                 using var archive = arg == "-"
                     ? new ZipArchive(Console.OpenStandardInput(), ZipArchiveMode.Read)
+                    : Uri.IsWellFormedUriString(arg, UriKind.Absolute)
+                    ? new ZipArchive(new HttpClient().GetStreamAsync(arg).GetAwaiter().GetResult(), ZipArchiveMode.Read)
                     : ZipFile.OpenRead(arg);
 
                 foreach (var entry in archive.Entries)

@@ -14,9 +14,10 @@
     <Product>ZipIO</Product>
     <WebPage>http://ltr-data.se</WebPage>
   </PropertyGroup>
-  
-  <ItemGroup>
-    <Reference Include="System.IO.Compression" Condition="'$(TargetFramework)' == 'net46'" />
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net46'">
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>
