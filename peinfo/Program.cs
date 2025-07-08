@@ -105,6 +105,15 @@ peinfo --wim=imagefile --index=wimindex filepath1 [filepath2 ...]");
             ? new WimFile(wim).GetImage(wimIndex - 1)
             : null;
 
+        if (fs is not null)
+        {
+            files = [.. files.SelectMany(f => fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f)))];
+        }
+        else
+        {
+            files = [.. files.SelectMany(static f => Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f)))];
+        }
+
         foreach (var path in files)
         {
             try
@@ -112,6 +121,9 @@ peinfo --wim=imagefile --index=wimindex filepath1 [filepath2 ...]");
                 using Stream file = fs is not null
                     ? fs.OpenFile(path, FileMode.Open, FileAccess.Read)
                     : File.OpenRead(path);
+
+                Console.WriteLine();
+                Console.WriteLine(path);
 
                 ProcessFile(file);
             }
