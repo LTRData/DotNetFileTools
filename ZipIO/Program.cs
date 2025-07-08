@@ -143,7 +143,8 @@ Show contents of files within zip archive.
 
             foreach (var entry in archive.Entries.Where(matchFunc))
             {
-                entry.Open().CopyTo(stdOut);
+                using var stream = entry.Open();
+                stream.CopyTo(stdOut);
             }
         }
 
