@@ -55,7 +55,7 @@ public static class Program
             {
                 var path = Path.GetFullPath(arg);
                 var asmname = AssemblyName.GetAssemblyName(path);
-                DisplayDependencies(new(), Path.GetDirectoryName(path), asmname, "", nodep, depforall);
+                DisplayDependencies([], Path.GetDirectoryName(path), asmname, "", nodep, depforall);
             }
             catch (Exception ex)
             {
