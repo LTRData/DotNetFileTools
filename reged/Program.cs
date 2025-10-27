@@ -2,6 +2,7 @@
 using DiscUtils;
 using DiscUtils.Registry;
 using DiscUtils.Streams;
+using DiscUtils.Wim;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
 using System;
@@ -46,6 +47,8 @@ public static class Program
     {
         string? imageFile = null;
         var partition = 0;
+        string? wimPath = null;
+        var wimIndex = 1;
         string? hiveFile = null;
         string? keyPath = null;
         string? valueName = null;
@@ -95,6 +98,14 @@ public static class Program
             }
             else if (cmd.Key == "part" && cmd.Value.Length == 1
                 && cmds.ContainsKey("image") && int.TryParse(cmd.Value[0], out partition))
+            {
+            }
+            else if (cmd.Key == "wim" && cmd.Value.Length == 1 && !cmds.ContainsKey("image"))
+            {
+                wimPath = cmd.Value[0];
+            }
+            else if (cmd.Key == "index" && cmd.Value.Length == 1
+                && int.TryParse(cmd.Value[0], out wimIndex) && cmds.ContainsKey("wim"))
             {
             }
             else if ((cmd.Key is "k" or "key") && cmd.Value.Length == 1)
@@ -206,7 +217,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             _ => throw new InvalidOperationException()
         };
 
-        if (imageFile is not null)
+        if (imageFile is not null || wimPath is not null)
         {
             DiscUtils.Containers.SetupHelper.SetupContainers();
             DiscUtils.FileSystems.SetupHelper.SetupFileSystems();
@@ -228,10 +239,15 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             : partitions?[partition - 1].Open()
             : null;
 
+        using var wimFileStream = wimPath is not null ? File.OpenRead(wimPath) : null;
+
+        var wimFile = wimFileStream is not null ? new WimFile(wimFileStream) : null;
+
         var fileSystem = fileSystemStream is not null
             && FileSystemManager.DetectFileSystems(fileSystemStream) is { } fsInfo
             && fsInfo.Count > 0
-            ? fsInfo[0].Open(fileSystemStream) : null;
+            ? fsInfo[0].Open(fileSystemStream) :
+            wimFile?.GetImage(wimIndex - 1);
 
         if (imageFile is not null
             && fileSystem is null)
