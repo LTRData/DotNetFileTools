@@ -570,7 +570,7 @@ build/merge/edit operations.
                 var dllimport = m.GetCustomAttribute<DllImportAttribute>();
                 if (dllimport is not null && !m.IsDefined(typeof(ObsoleteAttribute)))
                 {
-                    imports ??= new();
+                    imports ??= [];
                     Write?.Invoke("import(");
                     Console.ForegroundColor = ConsoleColor.Cyan;
                     Write?.Invoke(@$"""{dllimport.Value}""");
@@ -610,6 +610,11 @@ build/merge/edit operations.
                         sb.Append("retval ");
                     }
 
+                    if (p.IsOptional)
+                    {
+                        sb.Append("optional ");
+                    }
+
                     if (p.IsIn)
                     {
                         sb.Append("in ");
@@ -623,10 +628,27 @@ build/merge/edit operations.
                     sb.Append(p.ParameterType.FormatTypeName());
                     sb.Append(' ');
                     sb.Append(p.Name);
-                    if (p.HasDefaultValue)
+
+                    if (p.IsOptional || p.HasDefaultValue)
                     {
                         sb.Append(" = ");
-                        sb.Append(p.DefaultValue ?? "null");
+
+                        object? defaultValue = null;
+                        try
+                        {
+                            defaultValue = p.DefaultValue;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.Error.WriteLine($@"
+// Unresolved DefaultValue for '{p.Name}': {ex.GetType().Name}: {ex.Message}");
+                            Console.ResetColor();
+
+                            defaultValue = "unknown";
+                        }
+
+                        sb.Append(defaultValue ?? "default");
                     }
 
                     return sb.ToString();
