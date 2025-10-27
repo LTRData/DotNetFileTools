@@ -10,6 +10,8 @@ using System.Security.Cryptography.X509Certificates;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using DiscUtils.Streams;
+using System.IO.Compression;
+using LTRData.Extensions.Buffers;
 
 namespace peinfo;
 
@@ -61,6 +63,12 @@ public static class Program
                 && !cmds.ContainsKey("image"))
             {
                 wimPath = cmd.Value[0];
+            }
+            else if (cmd.Key == "index"
+                && cmd.Value.Length == 1
+                && int.TryParse(cmd.Value[0], out wimIndex)
+                && cmds.ContainsKey("wim"))
+            {
             }
             else if (cmd.Key == ""
                 && cmd.Value.Length >= 1)
@@ -143,6 +151,49 @@ peinfo --wim=imagefile --index=wimindex filepath1 [filepath2 ...]");
     {
         var fileData = file.ReadExactly((int)(file.Length - file.Position));
 
+        if (fileData[0] == 0x1f && fileData[1] == 0x8b)
+        {
+            using var stream = new MemoryStream(fileData);
+            using var gzip = new GZipStream(stream, CompressionMode.Decompress);
+            using var buffer = new MemoryStream();
+            gzip.CopyTo(buffer);
+            fileData = buffer.ToArray();
+        }
+
+        if (fileData.Length >= 2 && fileData[0] == 'M' && fileData[1] == 'Z')
+        {
+            ProcessPEFile(fileData);
+            return;
+        }
+
+        var elf = MemoryMarshal.Read<ElfHeader>(fileData);
+
+        if (elf.IsValidMagic)
+        {
+            ProcessELFFile(elf);
+            return;
+        }
+
+        throw new InvalidDataException("Not a valid PE file or ELF file");
+    }
+
+    private static unsafe void ProcessELFFile(ElfHeader elf)
+    {
+        Console.WriteLine();
+        Console.WriteLine("ELF header:");
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+        Console.WriteLine($"{"Class",-24}{elf.Machine}");
+        Console.WriteLine($"{"Type",-24}{elf.Type}");
+#endif
+        Console.WriteLine($"{"Class",-24}{elf.cls}");
+        Console.WriteLine($"{"Data encoding",-24}{elf.data}");
+        Console.WriteLine($"{"Version",-24}{elf.version}");
+        Console.WriteLine($"{"OS/ABI",-24}{elf.osabi}");
+        Console.WriteLine($"{"ABI version",-24}{elf.abiversion}");
+    }
+
+    public static void ProcessPEFile(byte[] fileData)
+    {
         using var reader = new PEReader([.. fileData]);
 
         var coffHeader = reader.PEHeaders.CoffHeader;
