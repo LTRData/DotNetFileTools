@@ -182,7 +182,7 @@ peinfo --wim=imagefile --index=wimindex filepath1 [filepath2 ...]");
         Console.WriteLine();
         Console.WriteLine("ELF header:");
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-        Console.WriteLine($"{"Class",-24}{elf.Machine}");
+        Console.WriteLine($"{"Machine",-24}{elf.Machine}");
         Console.WriteLine($"{"Type",-24}{elf.Type}");
 #endif
         Console.WriteLine($"{"Class",-24}{elf.cls}");
