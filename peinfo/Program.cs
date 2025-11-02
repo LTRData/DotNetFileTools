@@ -1,5 +1,4 @@
 ﻿using Arsenal.ImageMounter.Extensions;
-using Arsenal.ImageMounter.Internal;
 using Arsenal.ImageMounter.IO.Native;
 using DiscUtils;
 using DiscUtils.Complete;
@@ -8,19 +7,13 @@ using DiscUtils.Wim;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
-using System;
-using System.Collections;
 using System.Collections.Immutable;
 using System.IO.Compression;
-using System.Net;
-using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 
 namespace peinfo;
 
@@ -293,12 +286,8 @@ Use --dep switch for a DLL dependency tree.");
 
         try
         {
-            var resourceSection = reader.GetSectionData(".rsrc");
-
-            if (resourceSection.Length > 0)
+            if (NativeFileVersion.TryGetVersion(fileData, out var fileVersion))
             {
-                var fileVersion = new NativeFileVersion(fileData);
-
                 Console.WriteLine();
                 Console.WriteLine("Version resource:");
 
@@ -329,112 +318,6 @@ Use --dep switch for a DLL dependency tree.");
             Console.WriteLine($"{"Runtime version",-24}{corHeader.MajorRuntimeVersion}.{corHeader.MinorRuntimeVersion}");
         }
 
-        var securitySectionLocation = NativePE.GetRawFileDirectoryEntry(fileData, NativePE.ImageDirectoryEntry.Security);
-
-        if (securitySectionLocation.Size > 0)
-        {
-            Console.WriteLine();
-            Console.WriteLine("Authenticode signature:");
-
-            var securitySection = fileData.AsSpan((int)securitySectionLocation.RelativeVirtualAddress, (int)securitySectionLocation.Size);
-
-            var header = MemoryMarshal.Read<NativePE.WinCertificateHeader>(securitySection);
-
-            if (header.Revision == 0x200 && header.CertificateType == NativePE.CertificateType.PkcsSignedData)
-            {
-                var blob = NativePE.GetCertificateBlob(securitySection);
-
-                var signed = new SignedCms();
-
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-                signed.Decode(blob);
-#else
-                signed.Decode(blob.ToArray());
-#endif
-
-                for (; ; )
-                {
-                    var signerInfo = signed.SignerInfos[0];
-
-                    if (signerInfo.Certificate is not { } cert)
-                    {
-                        break;
-                    }
-
-                    var certSubjectName = cert.Subject;
-
-                    Console.WriteLine($"{"Signed by",-24}{certSubjectName}");
-
-                    if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
-                        || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))
-                        || NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)))
-                    {
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"File signature is valid.");
-                        Console.ResetColor();
-                    }
-                    else
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"File signature is not valid. File contents modified after signing.");
-                        Console.ResetColor();
-                    }
-
-                    try
-                    {
-                        signed.CheckSignature(verifySignatureOnly: true);
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"Certificate signature valid.");
-                        Console.ResetColor();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"Certificate signature error: {ex.JoinMessages()}");
-                        Console.ResetColor();
-                    }
-
-                    using var chain = new X509Chain();
-                    chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                    chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.IgnoreCtlNotTimeValid | X509VerificationFlags.IgnoreNotTimeNested;
-
-                    if (chain.Build(cert))
-                    {
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine($"Certificate is valid.");
-                        Console.ResetColor();
-                    }
-                    else
-                    {
-                        foreach (var certChainStatus in chain.ChainStatus)
-                        {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine($"Certificate validation error: {certChainStatus.Status}: {certChainStatus.StatusInformation}");
-                            Console.ResetColor();
-                        }
-                    }
-
-                    if (signerInfo.UnsignedAttributes
-                        .OfType<CryptographicAttributeObject>()
-                        .Where(o => o.Oid.Value!.StartsWith("1.3.6.1.4.1.311.2.4.", StringComparison.Ordinal))
-                        .SelectMany(o => o.Values.OfType<AsnEncodedData>())
-                        .Select(o => o.RawData)
-                        .FirstOrDefault() is not { } subData)
-                    {
-                        break;
-                    }
-
-                    signed.Decode(subData);
-                }
-            }
-            else
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"Unsupported authenticode signature");
-                Console.ResetColor();
-            }
-        }
-
         if (reader.PEHeaders.PEHeader is { } peHeader)
         {
             Console.WriteLine();
@@ -450,6 +333,112 @@ Use --dep switch for a DLL dependency tree.");
             Console.WriteLine($"{"Linker version",-24}{peHeader.MajorLinkerVersion}.{peHeader.MinorLinkerVersion}");
             Console.WriteLine($"{"OS version",-24}{peHeader.MajorOperatingSystemVersion}.{peHeader.MinorOperatingSystemVersion}");
             Console.WriteLine($"{"Subsystem version",-24}{peHeader.MajorSubsystemVersion}.{peHeader.MinorSubsystemVersion}");
+
+            var securitySectionLocation = peHeader.CertificateTableDirectory;
+
+            if (securitySectionLocation.Size > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Authenticode signature:");
+
+                var securitySection = fileData.AsSpan(securitySectionLocation.RelativeVirtualAddress, securitySectionLocation.Size);
+
+                var header = MemoryMarshal.Read<NativePE.WinCertificateHeader>(securitySection);
+
+                if (header.Revision == 0x200 && header.CertificateType == NativePE.CertificateType.PkcsSignedData)
+                {
+                    var blob = NativePE.GetCertificateBlob(securitySection);
+
+                    var signed = new SignedCms();
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+                    signed.Decode(blob);
+#else
+                signed.Decode(blob.ToArray());
+#endif
+
+                    for (; ; )
+                    {
+                        var signerInfo = signed.SignerInfos[0];
+
+                        if (signerInfo.Certificate is not { } cert)
+                        {
+                            break;
+                        }
+
+                        var certSubjectName = cert.Subject;
+
+                        Console.WriteLine($"{"Signed by",-24}{certSubjectName}");
+
+                        if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
+                            || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))
+                            || NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)))
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"File signature is valid.");
+                            Console.ResetColor();
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"File signature is not valid. File contents modified after signing.");
+                            Console.ResetColor();
+                        }
+
+                        try
+                        {
+                            signed.CheckSignature(verifySignatureOnly: true);
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"Certificate signature valid.");
+                            Console.ResetColor();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"Certificate signature error: {ex.JoinMessages()}");
+                            Console.ResetColor();
+                        }
+
+                        using var chain = new X509Chain();
+                        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.IgnoreCtlNotTimeValid | X509VerificationFlags.IgnoreNotTimeNested;
+
+                        if (chain.Build(cert))
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"Certificate is valid.");
+                            Console.ResetColor();
+                        }
+                        else
+                        {
+                            foreach (var certChainStatus in chain.ChainStatus)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"Certificate validation error: {certChainStatus.Status}: {certChainStatus.StatusInformation}");
+                                Console.ResetColor();
+                            }
+                        }
+
+                        if (signerInfo.UnsignedAttributes
+                            .OfType<CryptographicAttributeObject>()
+                            .Where(o => o.Oid.Value!.StartsWith("1.3.6.1.4.1.311.2.4.", StringComparison.Ordinal))
+                            .SelectMany(o => o.Values.OfType<AsnEncodedData>())
+                            .Select(o => o.RawData)
+                            .FirstOrDefault() is not { } subData)
+                        {
+                            break;
+                        }
+
+                        signed.Decode(subData);
+                    }
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"Unsupported authenticode signature");
+                    Console.ResetColor();
+                }
+            }
 
             var importSection = peHeader.ImportTableDirectory;
 
@@ -510,9 +499,17 @@ Use --dep switch for a DLL dependency tree.");
                         Console.WriteLine($"    {name}    (Ordinal: 0x{exportDir.Base + ordinal:X}, RVA: 0x{functionRVA:X8})");
                     }
                 }
-                else
+                
+                if (exportDir.NumberOfFunctions != 0)
                 {
-                    Console.WriteLine("    (No named exports)");
+                    var functionPointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+
+                    for (var i = 0; i < exportDir.NumberOfFunctions; i++)
+                    {
+                        var functionRVA = functionPointers[i];
+
+                        Console.WriteLine($"              (Ordinal: 0x{exportDir.Base + i:X}, RVA: 0x{functionRVA:X8})");
+                    }
                 }
             }
         }
@@ -553,8 +550,8 @@ Use --dep switch for a DLL dependency tree.");
             Console.ResetColor();
 
             var thunksData = reader.GetSectionData((int)descr.OriginalFirstThunk).AsSpan();
-            
-            if (reader.PEHeaders.CoffHeader.SizeOfOptionalHeader == Unsafe.SizeOf<ImageOptionalHeader32>() + 16 * Unsafe.SizeOf<ImageDataDirectory>())
+
+            if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32)
             {
                 var thunks = MemoryMarshal.Cast<byte, uint>(thunksData);
 
@@ -576,7 +573,7 @@ Use --dep switch for a DLL dependency tree.");
                     }
                 }
             }
-            else if (reader.PEHeaders.CoffHeader.SizeOfOptionalHeader == Unsafe.SizeOf<ImageOptionalHeader64>() + 16 * Unsafe.SizeOf<ImageDataDirectory>())
+            else if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32Plus)
             {
                 var thunks = MemoryMarshal.Cast<byte, ulong>(thunksData);
 
@@ -642,7 +639,7 @@ Use --dep switch for a DLL dependency tree.");
 
             var thunksData = reader.GetSectionData(descr.NameTable - addressBase).AsSpan();
 
-            if (reader.PEHeaders.CoffHeader.SizeOfOptionalHeader == Unsafe.SizeOf<ImageOptionalHeader32>() + 16 * Unsafe.SizeOf<ImageDataDirectory>())
+            if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32)
             {
                 var thunks = MemoryMarshal.Cast<byte, int>(thunksData);
 
@@ -664,7 +661,7 @@ Use --dep switch for a DLL dependency tree.");
                     }
                 }
             }
-            else if (reader.PEHeaders.CoffHeader.SizeOfOptionalHeader == Unsafe.SizeOf<ImageOptionalHeader64>() + 16 * Unsafe.SizeOf<ImageDataDirectory>())
+            else if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32Plus)
             {
                 var thunks = MemoryMarshal.Cast<byte, ulong>(thunksData);
 
@@ -708,78 +705,201 @@ Use --dep switch for a DLL dependency tree.");
     {
         Console.WriteLine("Dependency Tree:");
 
-        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? [];
+        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? [];
 
         if (file is FileStream { Name: { } fileName }
             && Path.GetDirectoryName(fileName) is { } dir)
         {
-            paths = [dir, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "downlevel"), .. paths];
+            paths = [dir, .. paths];
         }
-
-        ProcessDependencyTree(file, new(StringComparer.OrdinalIgnoreCase), paths, 2);
-    }
-
-    private static void ProcessDependencyTree(Stream file, HashSet<string> modules, string[] paths, int indent)
-    {
-#if NET6_0_OR_GREATER
-        Span<char> chars = stackalloc char[indent];
-        chars.Fill(' ');
-#else
-        var chars = new string(' ', indent);
-#endif
 
         var fileData = file.ReadExactly((int)(file.Length - file.Position));
 
-        foreach (var moduleName in EnumerateDependencies(fileData))
+        ProcessDependencyTree(fileData,
+                              modules: new(StringComparer.OrdinalIgnoreCase),
+                              missingModules: new(StringComparer.OrdinalIgnoreCase),
+                              paths: paths,
+                              indent: 2);
+    }
+
+    private static Dictionary<int, string>? _indentCache;
+
+    private static string GetIndent(int indent)
+    {
+        _indentCache ??= [];
+        
+        if (!_indentCache.TryGetValue(indent, out var indentStr))
         {
-            if (modules.Contains(moduleName))
+            indentStr = new string(' ', indent);
+            _indentCache[indent] = indentStr;
+        }
+        
+        return indentStr;
+    }
+
+    private static void ProcessDependencyTree(byte[] fileData,
+                                              Dictionary<string, (string FullPath, ImmutableArray<(ulong Ordinal, string? Name)> Functions)> modules,
+                                              Dictionary<string, bool> missingModules,
+                                              string[] paths,
+                                              int indent)
+    {
+        foreach (var (moduleName, functions, delayed) in EnumerateDependencies(fileData))
+        {
+            if (!modules.TryGetValue(moduleName, out var exports))
             {
+                foreach (var path in paths)
+                {
+                    var exportsQuery = TryPath(Path.Combine(path, moduleName), modules, missingModules, paths, indent)
+                        ?? TryPath(Path.Combine(path, "downloevel", moduleName), modules, missingModules, paths, indent)
+                        ?? TryPath(Path.Combine(path, "drivers", moduleName), modules, missingModules, paths, indent)
+                        ?? TryPath(Path.Combine(path, "lib", moduleName), modules, missingModules, paths, indent);
+
+                    if (exportsQuery is not null)
+                    {
+                        exports = exportsQuery.Value;
+                        break;
+                    }
+                }
+
+                if (exports.FullPath is null)
+                {
+                    modules[moduleName] = default;
+
+                    var chars = GetIndent(indent);
+
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"{chars}  Could not find {(delayed ? "delay-loaded " : null)}dependency '{moduleName}'");
+                    Console.ResetColor();
+                }
+            }
+
+            if (exports.FullPath is null)
+            {
+                if (!missingModules.TryGetValue(moduleName, out var previouslyDelayed))
+                {
+                    previouslyDelayed = delayed;
+                    missingModules.Add(moduleName, previouslyDelayed);
+                }
+
+                if (previouslyDelayed && !delayed)
+                {
+                    var chars = GetIndent(indent);
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"{chars}  Dependency '{moduleName}' was previously reported as missing delay-loaded, now required as normal import");
+                    Console.ResetColor();
+                    missingModules[moduleName] = false;
+                }
+
                 continue;
             }
 
-            modules.Add(moduleName);
-
-            string? fullPath = null;
-
-            foreach (var path in paths)
+            foreach (var (Ordinal, Hint, Name) in functions)
             {
-                fullPath = Path.Combine(path, moduleName);
+                var match = exports.Functions.FirstOrDefault(f => (f.Ordinal != 0 && f.Ordinal == Ordinal) || f.Name == Name);
 
-                if (File.Exists(fullPath))
+                if (match.Name is null && match.Ordinal == 0)
                 {
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.WriteLine($"{chars}{fullPath}");
+                    var chars = GetIndent(indent);
+
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"{chars}  Could not find {(delayed ? "delay-loaded " : null)}function '{Name ?? $"Ordinal: 0x{Ordinal:X}"}' in dependency '{exports.FullPath}'");
                     Console.ResetColor();
-
-                    try
-                    {
-                        using var moduleData = File.OpenRead(fullPath);
-
-                        ProcessDependencyTree(moduleData, modules, paths, indent + 2);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"{chars}  Could not read dependency '{fullPath}': {ex.JoinMessages()}");
-                        Console.ResetColor();
-                    }
-
-                    break;
                 }
-
-                fullPath = null;
-            }
-
-            if (fullPath is null)
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"{chars}  Could not find dependency '{moduleName}'");
-                Console.ResetColor();
             }
         }
     }
 
-    public static IEnumerable<string> EnumerateDependencies(byte[] fileData)
+    private static (string FullPath, ImmutableArray<(ulong Ordinal, string? Name)> Functions)? TryPath(string tryPath,
+                                                                                                       Dictionary<string, (string FullPath, ImmutableArray<(ulong Ordinal, string? Name)> Functions)> modules,
+                                                                                                       Dictionary<string, bool> missingModules,
+                                                                                                       string[] paths,
+                                                                                                       int indent)
+    {
+        if (!File.Exists(tryPath))
+        {
+            return null;
+        }
+
+        var chars = GetIndent(indent);
+
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine($"{chars}{tryPath}");
+        Console.ResetColor();
+
+        try
+        {
+            using var file = File.OpenRead(tryPath);
+
+            var fileData = file.ReadExactly((int)(file.Length - file.Position));
+
+            var exports = GetExports(fileData);
+
+            modules[Path.GetFileName(tryPath)] = (tryPath, exports);
+
+            ProcessDependencyTree(fileData, modules, missingModules, paths, indent + 2);
+
+            return (tryPath, exports);
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"{chars}  Could not read dependency '{tryPath}': {ex.JoinMessages()}");
+            Console.ResetColor();
+        }
+
+        return null;
+    }
+
+    private static ImmutableArray<(ulong Ordinal, string? Name)> GetExports(byte[] fileData)
+    {
+        using var reader = new PEReader([.. fileData]);
+
+        if (reader.PEHeaders.PEHeader is not { } peHeader)
+        {
+            throw new InvalidDataException("Not a valid PE file with executable sections");
+        }
+
+        var functions = ImmutableArray.CreateBuilder<(ulong Ordinal, string? Name)>();
+
+        var exportSection = peHeader.ExportTableDirectory;
+
+        if (exportSection.Size > 0
+            && reader.PEHeaders.TryGetDirectoryOffset(exportSection, out var exportSectionAddress))
+        {
+            var exportDir = MemoryMarshal.Read<ImageExportDirectory>(fileData.AsSpan(exportSectionAddress, exportSection.Size));
+
+            if (exportDir.NumberOfNames != 0)
+            {
+                var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
+                var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan()).Slice(0, exportDir.NumberOfNames);
+
+                for (var i = 0; i < exportDir.NumberOfNames; i++)
+                {
+                    var nameRVA = namePointers[i];
+                    var name = reader.GetSectionData((int)nameRVA).AsSpan().ReadNullTerminatedAsciiString();
+                    var ordinal = ordinalPointers[i];
+
+                    functions.Add((exportDir.Base + ordinal, name));
+                }
+            }
+            
+            if (exportDir.NumberOfFunctions != 0)
+            {
+                var functionPointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+
+                for (var i = 0; i < exportDir.NumberOfFunctions; i++)
+                {
+                    var functionRVA = functionPointers[i];
+
+                    functions.Add((exportDir.Base + (ulong)i, null));
+                }
+            }
+        }
+
+        return functions.ToImmutable();
+    }
+
+    public static IEnumerable<(string Module, ImmutableArray<(ulong Ordinal, ushort Hint, string? Name)> Functions, bool Delayed)> EnumerateDependencies(byte[] fileData)
     {
         using var reader = new PEReader([.. fileData]);
 
@@ -814,7 +934,56 @@ Use --dep switch for a DLL dependency tree.");
                     continue;
                 }
 
-                yield return moduleName;
+                var functions = ImmutableArray.CreateBuilder<(ulong Ordinal, ushort Hint, string? Name)>();
+
+                var thunksData = reader.GetSectionData((int)descr.OriginalFirstThunk).AsSpan();
+
+                if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32)
+                {
+                    var thunks = MemoryMarshal.Cast<byte, uint>(thunksData);
+
+                    foreach (var func in thunks)
+                    {
+                        if (func == 0)
+                        {
+                            break;
+                        }
+
+                        if ((func & IMAGE_ORDINAL_FLAG32) != 0)
+                        {
+                            functions.Add((Ordinal: func & ~IMAGE_ORDINAL_FLAG32, Hint: 0, Name: null));
+                        }
+                        else
+                        {
+                            var data = reader.GetSectionData((int)func).AsSpan();
+                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data.Slice(2).ReadNullTerminatedAsciiString()));
+                        }
+                    }
+                }
+                else if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32Plus)
+                {
+                    var thunks = MemoryMarshal.Cast<byte, ulong>(thunksData);
+
+                    foreach (var func in thunks)
+                    {
+                        if (func == 0)
+                        {
+                            break;
+                        }
+
+                        if ((func & IMAGE_ORDINAL_FLAG64) != 0)
+                        {
+                            functions.Add((Ordinal: func & ~IMAGE_ORDINAL_FLAG64, Hint: 0, Name: null));
+                        }
+                        else
+                        {
+                            var data = reader.GetSectionData((int)func).AsSpan();
+                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data.Slice(2).ReadNullTerminatedAsciiString()));
+                        }
+                    }
+                }
+
+                yield return (moduleName, functions.ToImmutable(), Delayed: false);
             }
         }
 
@@ -847,7 +1016,56 @@ Use --dep switch for a DLL dependency tree.");
                     continue;
                 }
 
-                yield return moduleName;
+                var functions = ImmutableArray.CreateBuilder<(ulong Ordinal, ushort Hint, string? Name)>();
+
+                var thunksData = reader.GetSectionData(descr.NameTable - addressBase).AsSpan();
+
+                if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32)
+                {
+                    var thunks = MemoryMarshal.Cast<byte, int>(thunksData);
+
+                    foreach (var func in thunks)
+                    {
+                        if (func == 0)
+                        {
+                            break;
+                        }
+
+                        if ((func & IMAGE_ORDINAL_FLAG32) != 0)
+                        {
+                            functions.Add((Ordinal: (uint)(func & ~IMAGE_ORDINAL_FLAG32), Hint: 0, Name: null));
+                        }
+                        else
+                        {
+                            var data = reader.GetSectionData(func - addressBase).AsSpan();
+                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data.Slice(2).ReadNullTerminatedAsciiString()));
+                        }
+                    }
+                }
+                else if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32Plus)
+                {
+                    var thunks = MemoryMarshal.Cast<byte, ulong>(thunksData);
+
+                    foreach (var func in thunks)
+                    {
+                        if (func == 0)
+                        {
+                            break;
+                        }
+
+                        if ((func & IMAGE_ORDINAL_FLAG64) != 0)
+                        {
+                            functions.Add((Ordinal: func & ~IMAGE_ORDINAL_FLAG64, Hint: 0, Name: null));
+                        }
+                        else
+                        {
+                            var data = reader.GetSectionData((int)(func - (ulong)addressBase)).AsSpan();
+                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data.Slice(2).ReadNullTerminatedAsciiString()));
+                        }
+                    }
+                }
+
+                yield return (moduleName, functions.ToImmutable(), Delayed: true);
             }
         }
     }
@@ -875,7 +1093,7 @@ public readonly struct ImageImportDescriptor
 [StructLayout(LayoutKind.Sequential)]
 public readonly struct ImageDelayImportDescriptor
 {
-    public readonly uint Attributes;           // Always zero
+    public readonly uint Attributes;           // 0 = absolute virtual addresses, 1 = relative virtual addresses
     public readonly int DllName;               // The RVA of the name of the DLL to be loaded. The name resides in the read-only data section of the image.
     public readonly int ModuleHandle;          // The RVA of the module handle (in the data section of the image) of the DLL to be delay-loaded. It is used for storage by the routine that is supplied to manage delay-loading.
     public readonly int AddressTable;          // The RVA of the delay-load import address table.
