@@ -1,6 +1,7 @@
 ﻿Imports System.IO
 Imports System.IO.Compression
 Imports System.Reflection
+Imports System.Runtime.InteropServices
 
 Public Module Program
 
@@ -10,15 +11,13 @@ Public Module Program
             UnsafeMain(args)
 
         Catch ex As Exception
-#If DEBUG Then
-            Trace.WriteLine(ex.ToString())
-#End If
             Console.ForegroundColor = ConsoleColor.Red
-            Console.WriteLine("Exception:")
+            Console.Error.WriteLine("Exception:")
             While ex IsNot Nothing
-                Console.WriteLine(ex.Message)
+                Console.Error.WriteLine(ex.Message)
                 ex = ex.InnerException
             End While
+
             Console.ResetColor()
 
         End Try
@@ -63,6 +62,10 @@ NetCompress [-d] [-m:GZip|Deflate] [-b:buffersize] [-a:assembly]")
             If String.IsNullOrEmpty(AssemblyFile) Then
                 AssemblyForType = GetType(GZipStream).Assembly
             Else
+                If Not Path.IsPathRooted(AssemblyFile) Then
+                    AssemblyFile = Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), AssemblyFile)
+                End If
+
                 AssemblyForType = Assembly.Load(AssemblyName.GetAssemblyName(AssemblyFile))
             End If
 
@@ -74,8 +77,16 @@ NetCompress [-d] [-m:GZip|Deflate] [-b:buffersize] [-a:assembly]")
                 MethodType.IsAbstract OrElse
                 Not GetType(Stream).IsAssignableFrom(MethodType) Then
 
-                Console.Error.WriteLine($"Class {typeName} not found in '{AssemblyForType.FullName}'.")
-                Return
+                MethodType = AppDomain.CurrentDomain.GetAssemblies().
+                    Select(Function(asm) asm.GetType(typeName, throwOnError:=False)).
+                    FirstOrDefault(Function(t) t IsNot Nothing AndAlso
+                        GetType(Stream).IsAssignableFrom(t) AndAlso
+                        Not t.IsAbstract)
+
+                If MethodType Is Nothing Then
+                    Console.Error.WriteLine($"Class {typeName} not found in '{AssemblyForType.FullName}'.")
+                    Return
+                End If
             End If
 
             If Mode = CompressionMode.Compress Then
