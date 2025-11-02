@@ -85,7 +85,7 @@ public static class Program
             asmlist.Add(asmname);
         }
 
-        Assembly asm;
+        Assembly? asm = null;
         try
         {
             if (asmname.CodeBase is not null)
@@ -98,6 +98,10 @@ public static class Program
             }
         }
         catch
+        {
+        }
+
+        if (asm is null)
         {
             try
             {
@@ -122,16 +126,25 @@ public static class Program
             }
         }
 
+        var isFrameworkAssembly = false;
+
 #if !NETCOREAPP
 
-        if (existing && asm.GlobalAssemblyCache)
+        isFrameworkAssembly = asm.GlobalAssemblyCache;
+#else
+
+        isFrameworkAssembly = Path.GetDirectoryName(asm.Location.AsSpan()).Equals(RuntimeEnvironment.GetRuntimeDirectory().AsSpan().TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+
+#endif
+
+        if (existing && isFrameworkAssembly)
         {
             return;
         }
 
         Console.Write(indentlevel);
 
-        if (asm.GlobalAssemblyCache)
+        if (isFrameworkAssembly)
         {
             Console.ForegroundColor = ConsoleColor.Green;
         }
@@ -140,14 +153,6 @@ public static class Program
             Console.ForegroundColor = ConsoleColor.White;
             Console.Write($"{asm.Location}: ");
         }
-
-#else
-
-        Console.Write(indentlevel);
-        Console.ForegroundColor = ConsoleColor.White;
-        Console.Write($"{asm.Location}: ");
-
-#endif
 
         Console.Write(asmname.FullName);
 
@@ -169,6 +174,7 @@ public static class Program
         catch
         {
         }
+
 #endif
 
         Console.ResetColor();
@@ -197,7 +203,7 @@ public static class Program
         if (target_framework is null
             || string.IsNullOrWhiteSpace(target_framework))
         {
-            var netfx = metadataversion.Split(new[] { 'v', '.' });
+            var netfx = metadataversion.Split(['v', '.']);
             return $"net{netfx[1]}{netfx[2]}";
         }
 
