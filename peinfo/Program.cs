@@ -125,7 +125,7 @@ Use --dep switch for a DLL dependency tree.");
 
         if (fs is not null)
         {
-            files = [.. files.SelectMany(f => fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f)))];
+            files = [.. files.SelectMany(f => fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f)))];
         }
         else
         {
@@ -717,7 +717,6 @@ Use --dep switch for a DLL dependency tree.");
 
         ProcessDependencyTree(fileData,
                               modules: new(StringComparer.OrdinalIgnoreCase),
-                              missingModules: new(StringComparer.OrdinalIgnoreCase),
                               paths: paths,
                               indent: 2);
     }
@@ -738,8 +737,7 @@ Use --dep switch for a DLL dependency tree.");
     }
 
     private static void ProcessDependencyTree(byte[] fileData,
-                                              Dictionary<string, (string FullPath, ImmutableArray<(ulong Ordinal, string? Name)> Functions)> modules,
-                                              Dictionary<string, bool> missingModules,
+                                              Dictionary<string, Exports> modules,
                                               string[] paths,
                                               int indent)
     {
@@ -749,25 +747,39 @@ Use --dep switch for a DLL dependency tree.");
             {
                 foreach (var path in paths)
                 {
-                    var exportsQuery = TryPath(Path.Combine(path, moduleName), modules, missingModules, paths, indent)
-                        ?? TryPath(Path.Combine(path, "downloevel", moduleName), modules, missingModules, paths, indent)
-                        ?? TryPath(Path.Combine(path, "drivers", moduleName), modules, missingModules, paths, indent)
-                        ?? TryPath(Path.Combine(path, "lib", moduleName), modules, missingModules, paths, indent);
+                    exports = TryPath(Path.Combine(path, moduleName), modules, paths, indent)
+                        ?? TryPath(Path.Combine(path, "downloevel", moduleName), modules, paths, indent)
+                        ?? TryPath(Path.Combine(path, "drivers", moduleName), modules, paths, indent)
+                        ?? TryPath(Path.Combine(path, "lib", moduleName), modules, paths, indent);
 
-                    if (exportsQuery is not null)
+                    if (exports is not null)
                     {
-                        exports = exportsQuery.Value;
+                        exports.Delayed = delayed;
+
                         break;
                     }
                 }
 
-                if (exports.FullPath is null)
+                if (exports is null)
                 {
-                    modules[moduleName] = default;
+                    exports = new(FullPath: null, Functions: default)
+                    {
+                        Delayed = delayed
+                    };
+
+                    modules[moduleName] = exports;
 
                     var chars = GetIndent(indent);
 
-                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    if (delayed)
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                    }
+
                     Console.WriteLine($"{chars}  Could not find {(delayed ? "delay-loaded " : null)}dependency '{moduleName}'");
                     Console.ResetColor();
                 }
@@ -775,19 +787,15 @@ Use --dep switch for a DLL dependency tree.");
 
             if (exports.FullPath is null)
             {
-                if (!missingModules.TryGetValue(moduleName, out var previouslyDelayed))
-                {
-                    previouslyDelayed = delayed;
-                    missingModules.Add(moduleName, previouslyDelayed);
-                }
-
-                if (previouslyDelayed && !delayed)
+                if (exports.Delayed && !delayed)
                 {
                     var chars = GetIndent(indent);
+
                     Console.ForegroundColor = ConsoleColor.Yellow;
                     Console.WriteLine($"{chars}  Dependency '{moduleName}' was previously reported as missing delay-loaded, now required as normal import");
                     Console.ResetColor();
-                    missingModules[moduleName] = false;
+                    
+                    exports.Delayed = false;
                 }
 
                 continue;
@@ -801,7 +809,15 @@ Use --dep switch for a DLL dependency tree.");
                 {
                     var chars = GetIndent(indent);
 
-                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    if (delayed)
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                    }
+
                     Console.WriteLine($"{chars}  Could not find {(delayed ? "delay-loaded " : null)}function '{Name ?? $"Ordinal: 0x{Ordinal:X}"}' in dependency '{exports.FullPath}'");
                     Console.ResetColor();
                 }
@@ -809,11 +825,10 @@ Use --dep switch for a DLL dependency tree.");
         }
     }
 
-    private static (string FullPath, ImmutableArray<(ulong Ordinal, string? Name)> Functions)? TryPath(string tryPath,
-                                                                                                       Dictionary<string, (string FullPath, ImmutableArray<(ulong Ordinal, string? Name)> Functions)> modules,
-                                                                                                       Dictionary<string, bool> missingModules,
-                                                                                                       string[] paths,
-                                                                                                       int indent)
+    private static Exports? TryPath(string tryPath,
+                                    Dictionary<string, Exports> modules,
+                                    string[] paths,
+                                    int indent)
     {
         if (!File.Exists(tryPath))
         {
@@ -834,11 +849,13 @@ Use --dep switch for a DLL dependency tree.");
 
             var exports = GetExports(fileData);
 
-            modules[Path.GetFileName(tryPath)] = (tryPath, exports);
+            var exportsRecord = new Exports(tryPath, exports);
 
-            ProcessDependencyTree(fileData, modules, missingModules, paths, indent + 2);
+            modules[Path.GetFileName(tryPath)] = exportsRecord;
 
-            return (tryPath, exports);
+            ProcessDependencyTree(fileData, modules, paths, indent + 2);
+
+            return exportsRecord;
         }
         catch (Exception ex)
         {
@@ -1117,4 +1134,9 @@ public readonly struct ImageExportDirectory
     public readonly int AddressOfFunctions;     // RVA from base of image
     public readonly int AddressOfNames;         // RVA from base of image
     public readonly int AddressOfNameOrdinals;  // RVA from base of image
+}
+
+internal record class Exports(string? FullPath, ImmutableArray<(ulong Ordinal, string? Name)> Functions)
+{
+    public bool Delayed { get; set; }
 }
