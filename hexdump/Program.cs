@@ -1,6 +1,5 @@
 ﻿using Arsenal.ImageMounter.IO.Devices;
 using Arsenal.ImageMounter.IO.Native;
-using Arsenal.ImageMounter.IO.Streams;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
