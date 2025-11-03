@@ -2,8 +2,11 @@
 using Arsenal.ImageMounter.IO.Native;
 using DiscUtils;
 using DiscUtils.Complete;
+using DiscUtils.SquashFs;
 using DiscUtils.Streams;
 using DiscUtils.Wim;
+using K4os.Compression.LZ4.Encoders;
+using K4os.Compression.LZ4.Streams;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
@@ -169,7 +172,19 @@ Use --dep switch for a DLL dependency tree.");
     }
 
     public static unsafe void ProcessFile(Stream file)
-        => ProcessFile(file.ReadExactly((int)(file.Length - file.Position)));
+        => ProcessFile(file.ReadToEnd());
+
+    private static unsafe byte[] ReadToEnd(this Stream file)
+    {
+        if (file.CanSeek)
+        {
+            return file.ReadExactly((int)(file.Length - file.Position));
+        }
+        
+        using var ms = new MemoryStream();
+        file.CopyTo(ms);
+        return ms.ToArray();
+    }
 
     private static unsafe void ProcessFile(byte[] fileData)
     {
@@ -183,11 +198,8 @@ Use --dep switch for a DLL dependency tree.");
             Console.WriteLine();
             Console.WriteLine("GZip compressed file detected, decompressing...");
 
-            using var stream = new MemoryStream(fileData);
-            using var decompr = new GZipStream(stream, CompressionMode.Decompress);
-            using var buffer = new MemoryStream();
-            decompr.CopyTo(buffer);
-            fileData = buffer.ToArray();
+            using var decompr = new GZipStream(new MemoryStream(fileData), CompressionMode.Decompress);
+            fileData = decompr.ReadToEnd();
         }
 
         if (fileData[0] == 0x78 && fileData[1] == 0x9c)
@@ -195,11 +207,8 @@ Use --dep switch for a DLL dependency tree.");
             Console.WriteLine();
             Console.WriteLine("ZLib compressed file detected, decompressing...");
 
-            using var stream = new MemoryStream(fileData);
-            using var decompr = new ZLibStream(stream, CompressionMode.Decompress, leaveOpen: false);
-            using var buffer = new MemoryStream();
-            decompr.CopyTo(buffer);
-            fileData = buffer.ToArray();
+            using var decompr = new ZLibStream(new MemoryStream(fileData), CompressionMode.Decompress, leaveOpen: false);
+            fileData = decompr.ReadToEnd();
         }
 
         if (fileData[0] == 0x28 && fileData[1] == 0xb5 && fileData[2] == 0x2f && fileData[3] == 0xfd)
@@ -207,11 +216,17 @@ Use --dep switch for a DLL dependency tree.");
             Console.WriteLine();
             Console.WriteLine("Zstandard compressed file detected, decompressing...");
 
-            using var stream = new MemoryStream(fileData);
-            using var decompr = new ZstdSharp.DecompressionStream(stream, leaveOpen: false);
-            using var buffer = new MemoryStream();
-            decompr.CopyTo(buffer);
-            fileData = buffer.ToArray();
+            using var decompr = new ZstdSharp.Decompressor();
+            fileData = decompr.Unwrap(fileData).ToArray();
+        }
+
+        if (fileData[0] == 0x04 && fileData[1] == 0x22 && fileData[2] == 0x4d && fileData[3] == 0x18)
+        {
+            Console.WriteLine();
+            Console.WriteLine("LZ4 compressed file detected, decompressing...");
+
+            using var decompr = LZ4Stream.Decode(new MemoryStream(fileData), leaveOpen: false);
+            fileData = decompr.ReadToEnd();
         }
 
         if (fileData[0] == 'P' && fileData[1] == 'K')
@@ -322,7 +337,7 @@ Use --dep switch for a DLL dependency tree.");
         Console.WriteLine("MZ header:");
         Console.WriteLine($"{"Machine",-24}{coffHeader.Machine}");
         Console.WriteLine($"{"Characteristics",-24}{coffHeader.Characteristics}");
-        
+
         if (reader.PEHeaders.IsCoffOnly)
         {
             Console.WriteLine($"{"Type",-24}No executable sections");
@@ -410,7 +425,7 @@ Use --dep switch for a DLL dependency tree.");
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
                     signed.Decode(blob);
 #else
-                signed.Decode(blob.ToArray());
+                    signed.Decode(blob.ToArray());
 #endif
 
                     for (; ; )
@@ -555,7 +570,7 @@ Use --dep switch for a DLL dependency tree.");
                         Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, RVA: 0x{functionRVA:X8})  {name}");
                     }
                 }
-                
+
                 if (exportDir.NumberOfFunctions != 0)
                 {
                     var functionPointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
@@ -769,7 +784,7 @@ Use --dep switch for a DLL dependency tree.");
             paths = [dir, .. paths];
         }
 
-        var fileData = file.ReadExactly((int)(file.Length - file.Position));
+        var fileData = file.ReadToEnd();
 
         ProcessDependencyTree(fileData,
                               modules: new(StringComparer.OrdinalIgnoreCase),
@@ -782,13 +797,13 @@ Use --dep switch for a DLL dependency tree.");
     private static string GetIndent(int indent)
     {
         _indentCache ??= [];
-        
+
         if (!_indentCache.TryGetValue(indent, out var indentStr))
         {
             indentStr = new string(' ', indent);
             _indentCache[indent] = indentStr;
         }
-        
+
         return indentStr;
     }
 
@@ -850,7 +865,7 @@ Use --dep switch for a DLL dependency tree.");
                     Console.ForegroundColor = ConsoleColor.Yellow;
                     Console.WriteLine($"{chars}  Dependency '{moduleName}' was previously reported as missing delay-loaded, now required as normal import");
                     Console.ResetColor();
-                    
+
                     exports.Delayed = false;
                 }
 
@@ -901,7 +916,7 @@ Use --dep switch for a DLL dependency tree.");
         {
             using var file = File.OpenRead(tryPath);
 
-            var fileData = file.ReadExactly((int)(file.Length - file.Position));
+            var fileData = file.ReadExactly((int)file.Length);
 
             var exports = GetExports(fileData);
 
@@ -955,7 +970,7 @@ Use --dep switch for a DLL dependency tree.");
                     functions.Add((exportDir.Base + ordinal, name));
                 }
             }
-            
+
             if (exportDir.NumberOfFunctions != 0)
             {
                 var functionPointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
