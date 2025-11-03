@@ -15,6 +15,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 
+#if !NET6_0_OR_GREATER
+using ZLibStream = DiscUtils.Compression.ZlibStream;
+#endif
+
 namespace peinfo;
 
 public static class Program
@@ -176,6 +180,9 @@ Use --dep switch for a DLL dependency tree.");
 
         if (fileData[0] == 0x1f && fileData[1] == 0x8b)
         {
+            Console.WriteLine();
+            Console.WriteLine("GZip compressed file detected, decompressing...");
+
             using var stream = new MemoryStream(fileData);
             using var decompr = new GZipStream(stream, CompressionMode.Decompress);
             using var buffer = new MemoryStream();
@@ -185,19 +192,33 @@ Use --dep switch for a DLL dependency tree.");
 
         if (fileData[0] == 0x78 && fileData[1] == 0x9c)
         {
-#if NET6_0_OR_GREATER
+            Console.WriteLine();
+            Console.WriteLine("ZLib compressed file detected, decompressing...");
+
             using var stream = new MemoryStream(fileData);
-            using var decompr = new ZLibStream(stream, CompressionMode.Decompress);
+            using var decompr = new ZLibStream(stream, CompressionMode.Decompress, leaveOpen: false);
             using var buffer = new MemoryStream();
             decompr.CopyTo(buffer);
             fileData = buffer.ToArray();
-#else
-            throw new NotSupportedException("ZLib compressed files are only supported on .NET 6 or later");
-#endif
+        }
+
+        if (fileData[0] == 0x28 && fileData[1] == 0xb5 && fileData[2] == 0x2f && fileData[3] == 0xfd)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Zstandard compressed file detected, decompressing...");
+
+            using var stream = new MemoryStream(fileData);
+            using var decompr = new ZstdSharp.DecompressionStream(stream, leaveOpen: false);
+            using var buffer = new MemoryStream();
+            decompr.CopyTo(buffer);
+            fileData = buffer.ToArray();
         }
 
         if (fileData[0] == 'P' && fileData[1] == 'K')
         {
+            Console.WriteLine();
+            Console.WriteLine("ZIP archive detected, processing entries...");
+
             ProcessZipFile(fileData);
             return;
         }
@@ -245,15 +266,50 @@ Use --dep switch for a DLL dependency tree.");
 
         Console.WriteLine();
         Console.WriteLine("ELF header:");
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-        Console.WriteLine($"{"Machine",-24}{elf.Machine}");
-        Console.WriteLine($"{"Type",-24}{elf.Type}");
-#endif
-        Console.WriteLine($"{"Class",-24}{elf.cls}");
-        Console.WriteLine($"{"Data encoding",-24}{elf.data}");
-        Console.WriteLine($"{"Version",-24}{elf.version}");
-        Console.WriteLine($"{"OS/ABI",-24}{elf.osabi}");
-        Console.WriteLine($"{"ABI version",-24}{elf.abiversion}");
+        Console.WriteLine($"{"Machine",-35}{elf.Machine}");
+        Console.WriteLine($"{"Type",-35}{elf.Type}");
+        Console.WriteLine($"{"Class",-35}{elf.cls}");
+        Console.WriteLine($"{"Data encoding",-35}{elf.data}");
+        Console.WriteLine($"{"Version",-35}{elf.version}");
+        Console.WriteLine($"{"OS/ABI",-35}{elf.osabi}");
+        Console.WriteLine($"{"ABI version",-35}{elf.abiversion}");
+
+        ElfHeaderEnd? headerEnd = null;
+
+        if (elf.cls == ElfClass.ELFCLASS32)
+        {
+            var elf32 = MemoryMarshal.Read<ElfHeader32>(fileData);
+
+            Console.WriteLine();
+            Console.WriteLine($"{"Entry point",-35}0x{elf32.EntryPoint:x8}");
+            Console.WriteLine($"{"Program header offset",-35}0x{elf32.ProgramHeaderOffset:x8}");
+            Console.WriteLine($"{"Section header offset",-35}0x{elf32.SectionHeaderOffset:x8}");
+
+            headerEnd = elf32.End;
+        }
+        else if (elf.cls == ElfClass.ELFCLASS64)
+        {
+            var elf64 = MemoryMarshal.Read<ElfHeader64>(fileData);
+
+            Console.WriteLine();
+            Console.WriteLine($"{"Entry point",-35}0x{elf64.EntryPoint:x16}");
+            Console.WriteLine($"{"Program header offset",-35}0x{elf64.ProgramHeaderOffset:x16}");
+            Console.WriteLine($"{"Section header offset",-35}0x{elf64.SectionHeaderOffset:x16}");
+
+            headerEnd = elf64.End;
+        }
+
+        if (headerEnd is { } end)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"{"Flags",-35}0x{end.Flags:x8}");
+            Console.WriteLine($"{"ELF header size",-35}{end.HeaderSize:N0} bytes");
+            Console.WriteLine($"{"Program header entry size",-35}{end.ProgramHeaderEntrySize:N0} bytes");
+            Console.WriteLine($"{"Number of program header entries",-35}{end.ProgramHeaderEntryCount:N0}");
+            Console.WriteLine($"{"Section header entry size",-35}{end.SectionHeaderEntrySize:N0} bytes");
+            Console.WriteLine($"{"Number of section header entries",-35}{end.SectionHeaderEntryCount:N0}");
+            Console.WriteLine($"{"Section header string table index",-35}{end.SectionHeaderStringTableIndex}");
+        }
     }
 
     public static void ProcessPEFile(byte[] fileData)
@@ -496,7 +552,7 @@ Use --dep switch for a DLL dependency tree.");
                         var ordinal = ordinalPointers[i];
                         var functionRVA = functionPointers[ordinal];
 
-                        Console.WriteLine($"    {name}    (Ordinal: 0x{exportDir.Base + ordinal:X}, RVA: 0x{functionRVA:X8})");
+                        Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, RVA: 0x{functionRVA:X8})  {name}");
                     }
                 }
                 
@@ -508,7 +564,7 @@ Use --dep switch for a DLL dependency tree.");
                     {
                         var functionRVA = functionPointers[i];
 
-                        Console.WriteLine($"              (Ordinal: 0x{exportDir.Base + i:X}, RVA: 0x{functionRVA:X8})");
+                        Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, RVA: 0x{functionRVA:X8})");
                     }
                 }
             }
