@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DiscUtils.Streams;
 using System.Linq;
+using System.Reflection.PortableExecutable;
 
 namespace VhdBlockBackup;
 

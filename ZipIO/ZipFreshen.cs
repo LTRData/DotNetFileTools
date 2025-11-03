@@ -1,4 +1,5 @@
 ﻿using LTRData.Extensions.CommandLine;
+using LTRData.Extensions.Formatting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,6 +9,7 @@ using System.Runtime.CompilerServices;
 
 #pragma warning disable IDE0079 // Remove unnecessary suppression
 #pragma warning disable IDE0057 // Use range operator
+#pragma warning disable CA1866 // Use char overload
 
 namespace ZipIO;
 
