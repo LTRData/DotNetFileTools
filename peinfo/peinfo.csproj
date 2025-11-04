@@ -14,8 +14,9 @@
     <PackageReference Include="System.Reflection.Metadata" Version="*" />
     <PackageReference Include="LTRData.DiscUtils.Wim" Version="*" />
     <PackageReference Include="LTRData.DiscUtils" Version="*" />
+    <PackageReference Include="LTRData.ExFat.DiscUtils" Version="*" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="*" />
-    <PackageReference Include="K4os.Compression.LZ4.Streams"></PackageReference>
+    <PackageReference Include="K4os.Compression.LZ4.Streams" Version="*" />
   </ItemGroup>
   
 </Project>
