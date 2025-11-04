@@ -2,9 +2,13 @@
 using DiscUtils.Streams;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.Formatting;
+using LTRData.Extensions.Native.Memory;
 using LTRData.Extensions.Split;
+using System.Buffers;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection.PortableExecutable;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
@@ -487,7 +491,7 @@ public static class PEViewer
 
         Console.WriteLine("Dependency Tree:");
 
-        var paths = Environment.GetEnvironmentVariable("PATH")
+        var pathsEnum = Environment.GetEnvironmentVariable("PATH")
             .AsMemory()
             .TokenEnum(Path.PathSeparator)
             .Select(m => m.ToString());
@@ -495,34 +499,41 @@ public static class PEViewer
         if (file is FileStream { Name: { } fileName }
             && Path.GetDirectoryName(fileName) is { Length: > 0 } dir)
         {
-            paths = paths.Prepend(dir);
-            paths = paths.Prepend(Path.Combine(dir, "lib"));
+            pathsEnum = pathsEnum.Prepend(dir);
+            pathsEnum = pathsEnum.Prepend(Path.Combine(dir, "lib"));
         }
 
-        if (Environment.Is64BitProcess && headers.FileHeader.Machine == ImageFileMachine.I386)
+        // If running as 64-bit process analyzing 32-bit file, add SysWOW64 first
+        if (Environment.Is64BitProcess && headers.FileHeader.Machine == ImageFileMachine.I386
+            && Environment.GetFolderPath(Environment.SpecialFolder.SystemX86) is { Length: > 0 } sysDirX86)
         {
-            // If running as 64-bit process analyzing 32-bit file, add SysWOW64 first
-            if (Environment.GetFolderPath(Environment.SpecialFolder.SystemX86) is { Length: > 0 } sysDirX86)
-            {
-                paths = paths.Append(sysDirX86);
-                paths = paths.Append(Path.Combine(sysDirX86, "drivers"));
-            }
+            pathsEnum = pathsEnum.Append(sysDirX86);
+            pathsEnum = pathsEnum.Append(Path.Combine(sysDirX86, "drivers"));
         }
 
         if (Environment.GetFolderPath(Environment.SpecialFolder.System) is { Length: > 0 } sysDir)
         {
-            paths = paths.Append(sysDir);
-            paths = paths.Append(Path.Combine(sysDir, "drivers"));
+            pathsEnum = pathsEnum.Append(sysDir);
+            pathsEnum = pathsEnum.Append(Path.Combine(sysDir, "drivers"));
         }
 
-        paths = paths
+        pathsEnum = pathsEnum
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(Directory.Exists);
+
+        IReadOnlyList<string> paths = [.. pathsEnum];
+
+        var apiSetLookup = paths
+            .Select(path => Path.Combine(path, "apisetschema.dll"))
+            .Where(File.Exists)
+            .Select(ApiSetResolver.GetApiSetTranslations)
+            .FirstOrDefault(dict => dict is not null);
 
         ProcessDependencyTree(fileData,
                               headers.FileHeader.Machine,
                               modules: new(StringComparer.OrdinalIgnoreCase),
-                              paths: [.. paths],
+                              apiSetLookup,
+                              paths: paths,
                               lastFoundPathIndices: [],
                               indent: 2,
                               isDelayedTree: false,
@@ -532,31 +543,39 @@ public static class PEViewer
     private static void ProcessDependencyTree(byte[] fileData,
                                               ImageFileMachine machine,
                                               Dictionary<string, Exports> modules,
+                                              ImmutableDictionary<string, string>? apiSetLookup,
                                               IReadOnlyList<string> paths,
                                               List<int> lastFoundPathIndices,
                                               int indent,
-                                              bool isDelayedTree, bool includeDelayed)
+                                              bool isDelayedTree,
+                                              bool includeDelayed)
     {
-        foreach (var (moduleName, functions, delayedImport) in EnumerateDependencies(fileData, includeDelayed))
+        foreach (var (moduleNameImport, functions, delayedImport) in EnumerateDependencies(fileData, includeDelayed))
         {
             if (!includeDelayed && delayedImport)
             {
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(moduleName)
-                || (moduleName.EndsWith(".dll", StringComparison.Ordinal) && (moduleName.StartsWith("api-", StringComparison.Ordinal) || moduleName.StartsWith("ext-", StringComparison.Ordinal))))
+            if (string.IsNullOrWhiteSpace(moduleNameImport))
             {
                 continue;
             }
 
+            if (!LookupApiSet(apiSetLookup, moduleNameImport, out var moduleName))
+            {
+                moduleName = moduleNameImport;
+            }
+
+            var moduleNameWithoutExtension = Path.GetFileNameWithoutExtension(moduleName);
+
             var delayed = delayedImport || isDelayedTree;
 
-            if (!modules.TryGetValue(moduleName, out var exports))
+            if (!modules.TryGetValue(moduleNameWithoutExtension, out var exports))
             {
                 foreach (var i in lastFoundPathIndices.Concat(Enumerable.Range(0, paths.Count).Except(lastFoundPathIndices)))
                 {
-                    exports = TryPath(moduleName, modules, paths, i, indent, delayed, includeDelayed, machine);
+                    exports = TryPath(moduleName, modules, apiSetLookup, paths, i, indent, delayed, includeDelayed, machine);
 
                     if (exports is not null)
                     {
@@ -578,7 +597,7 @@ public static class PEViewer
                         Delayed = delayed
                     };
 
-                    modules[moduleName] = exports;
+                    modules[moduleNameWithoutExtension] = exports;
 
                     var chars = Program.GetIndent(indent);
 
@@ -647,8 +666,35 @@ public static class PEViewer
         }
     }
 
+    private static bool LookupApiSet(ImmutableDictionary<string, string>? apiSetLookup,
+                                     string moduleNameImport,
+                                     [NotNullWhen(true)] out string? moduleName)
+    {
+        moduleName = null;
+
+        if (apiSetLookup is null
+            || moduleNameImport is null
+            || !moduleNameImport.Contains("-l")
+            || moduleNameImport.Contains('.') && !moduleNameImport.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var lastDelimited = moduleNameImport.LastIndexOf('-');
+
+        if (lastDelimited >= 0)
+        {
+            moduleNameImport = moduleNameImport.Substring(0, lastDelimited);
+        }
+
+        return apiSetLookup.TryGetValue(moduleNameImport, out moduleName);
+    }
+
+    private static readonly ImmutableArray<string> defaultExtensions = [".dll", ".sys", ".exe"];
+
     private static Exports? TryPath(string moduleName,
                                     Dictionary<string, Exports> modules,
+                                    ImmutableDictionary<string, string>? apiSetLookup,
                                     IReadOnlyList<string> paths,
                                     int pathIndex,
                                     int indent,
@@ -659,7 +705,31 @@ public static class PEViewer
 
         if (!File.Exists(tryPath))
         {
-            return null;
+            if (moduleName.Contains('.'))
+            {
+                return null;
+            }
+
+            string? tryExtPath = null;
+
+            foreach (var extension in defaultExtensions)
+            {
+                tryExtPath = tryPath + extension;
+
+                if (File.Exists(tryExtPath))
+                {
+                    break;
+                }
+
+                tryExtPath = null;
+            }
+
+            if (tryExtPath is null)
+            {
+                return null;
+            }
+
+            tryPath = tryExtPath;
         }
 
         var chars = Program.GetIndent(indent);
@@ -673,14 +743,9 @@ public static class PEViewer
             Console.ForegroundColor = ConsoleColor.Cyan;
         }
 
-        Console.WriteLine($"{chars}{tryPath}");
-        Console.ResetColor();
-
         try
         {
-            using var file = File.OpenRead(tryPath);
-
-            var fileData = file.ReadExactly((int)file.Length);
+            var fileData = File.ReadAllBytes(tryPath);
 
             var headers = NativePE.GetImageNtHeaders(fileData); // Validate PE file
 
@@ -689,13 +754,26 @@ public static class PEViewer
                 return null;
             }
 
+            Console.WriteLine($"{chars}{tryPath}");
+            Console.ResetColor();
+
             var exports = GetExports(fileData);
 
             var exportsRecord = new Exports(tryPath, exports);
 
-            modules[moduleName] = exportsRecord;
+            var moduleNameWithoutExtension = Path.GetFileNameWithoutExtension(moduleName);
 
-            ProcessDependencyTree(fileData, expectedMachine, modules, paths, [pathIndex], indent + 2, isDelayedTree, includeDelayed);
+            modules[moduleNameWithoutExtension] = exportsRecord;
+
+            ProcessDependencyTree(fileData,
+                                  expectedMachine,
+                                  modules,
+                                  apiSetLookup,
+                                  paths,
+                                  [pathIndex],
+                                  indent + 2,
+                                  isDelayedTree,
+                                  includeDelayed);
 
             return exportsRecord;
         }
@@ -707,6 +785,16 @@ public static class PEViewer
         }
 
         return null;
+    }
+
+    private static string GetDefaultExtension(string moduleName)
+    {
+        if (".sys".Equals(Path.GetExtension(moduleName), StringComparison.OrdinalIgnoreCase))
+        {
+            return ".sys";
+        }
+
+        return ".dll";
     }
 
     private static ImmutableArray<(ulong Ordinal, string? Name)> GetExports(byte[] fileData)
@@ -1023,11 +1111,6 @@ public static class PEViewer
 
         var forwarderModuleName = forwarderString.Slice(0, moduleEndIndex).ReadNullTerminatedAsciiString();
 
-        if (forwarderModuleName.LastIndexOf('.') < 0)
-        {
-            forwarderModuleName += ".dll";
-        }
-
         var functionName = forwarderString.Slice(moduleEndIndex + 1).ReadNullTerminatedAsciiString();
 
         if (functionName.Length == 0)
@@ -1057,8 +1140,17 @@ public static class PEViewer
     public static unsafe ReadOnlySpan<byte> AsSpan(in this PEMemoryBlock memoryBlock)
         => new(memoryBlock.Pointer, memoryBlock.Length);
 
+    public static unsafe ReadOnlySpan<byte> AsSpan<T>(in this PEMemoryBlock memoryBlock) where T : unmanaged
+        => new(memoryBlock.Pointer, memoryBlock.Length / Unsafe.SizeOf<T>());
+
     public static unsafe nint GetAddress(in this PEMemoryBlock memoryBlock)
         => (nint)memoryBlock.Pointer;
+
+    public static MemoryManager<byte> GetMemoryManager(in this PEMemoryBlock memoryBlock)
+        => new NativeMemory<byte>(memoryBlock.GetAddress(), memoryBlock.Length).GetMemoryManager();
+
+    public static MemoryManager<T> GetMemoryManager<T>(in this PEMemoryBlock memoryBlock) where T : unmanaged
+        => new NativeMemory<T>(memoryBlock.GetAddress(), memoryBlock.Length / Unsafe.SizeOf<T>()).GetMemoryManager();
 
     private const ulong IMAGE_ORDINAL_FLAG64 = 0x8000000000000000;
     private const uint IMAGE_ORDINAL_FLAG32 = 0x80000000;
