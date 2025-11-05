@@ -44,6 +44,7 @@ public static class Program
         var showDependencyTree = false;
         var includeDelayed = false;
         string? apiSetFile = null;
+        var searchOption = SearchOption.TopDirectoryOnly;
 
         var cmds = CommandLineParser.ParseCommandLine(args, StringComparer.Ordinal);
 
@@ -93,6 +94,11 @@ public static class Program
             {
                 ApiSetResolver.Default = ApiSetResolver.Empty;
             }
+            else if (cmd.Key is "r" or "recurse"
+                && cmd.Value.Length == 0)
+            {
+                searchOption = SearchOption.AllDirectories;
+            }
             else if (cmd.Key == ""
                 && cmd.Value.Length >= 1)
             {
@@ -119,6 +125,9 @@ Image files:
     --index=wimindex          WIM image index number to use (1-based).
 
 Options:
+    --recurse                 Recurse into subdirectories.
+    -r
+
     --dep                     Show DLL dependency tree for specified files.
 
     --delayed                 Include delay-loaded DLLs in dependency tree.
@@ -151,7 +160,7 @@ Options:
 
         using var part = vdisk is not null
             ? partNo != 0
-            ? (vdisk.Partitions?.Partitions?.ElementAtOrDefault(partNo - 1)?.Open()
+            ? (new VolumeManager(vdisk).GetLogicalVolumes()?.ElementAtOrDefault(partNo - 1)?.Open()
                 ?? throw new DriveNotFoundException($"Partition {partNo} not found"))
             : vdisk.Content
             : null;
@@ -160,7 +169,8 @@ Options:
             ? (FileSystemManager.DetectFileSystems(part).FirstOrDefault()?.Open(part)
                 ?? throw new NotSupportedException($"No supported file systems detected in partition {partNo}"))
             : wim is not null
-            ? new WimFile(wim).GetImage(wimIndex - 1)
+            ? (new WimFile(wim).TryGetImage(wimIndex - 1, out var wimfs) ? wimfs
+                : throw new DriveNotFoundException($"Index {wimIndex} not found in WIM file"))
             : null;
 
         Func<string, Stream> openFileFunc;
@@ -175,14 +185,14 @@ Options:
             openFileFunc = path => fs.OpenFile(path, FileMode.Open, FileAccess.Read);
 
             files = [.. files.SelectMany(f
-                => f.IndexOfAny('*', '?') < 0 ? [f] : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f)))];
+                => f.IndexOfAny('*', '?') < 0 ? [f] : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f), searchOption))];
         }
         else
         {
             openFileFunc = path => path is "-" or "" ? Console.OpenStandardInput() : File.OpenRead(path);
 
-            files = [.. files.SelectMany(static f
-                => f.IndexOfAny('*', '?') < 0 ? [f] : Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f)))];
+            files = [.. files.SelectMany(f
+                => f.IndexOfAny('*', '?') < 0 ? [f] : Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f), searchOption))];
         }
 
         if (apiSetFile is not null)
@@ -268,13 +278,16 @@ Options:
             return;
         }
 
-        if (fileData[0] == 127 && fileData[1] == 69 && fileData[2] == 76 && fileData[3] == 70)
+        if (fileData[0] == 127 && fileData[1] == 'E' && fileData[2] == 'L' && fileData[3] == 'F')
         {
             ELFViewer.ProcessELFFile(fileData);
             return;
         }
 
-        throw new InvalidDataException("Not a valid PE file or ELF file");
+        Console.WriteLine("Not a valid PE or ELF file. Initial data:");
+        HexExtensions.WriteHex(Console.Out, fileData.Take(32));
+
+        return;
     }
 
     internal static byte[] DecompressData(byte[] fileData)

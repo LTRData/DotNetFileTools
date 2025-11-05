@@ -440,7 +440,7 @@ public static class PEViewer
             }
 
             Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.ForegroundColor = ConsoleColor.Magenta;
             Console.Write("  ");
             Console.Write(moduleName);
 
@@ -452,7 +452,7 @@ public static class PEViewer
             }
 
             Console.WriteLine();
-            Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.DarkGray;
 
             var thunksData = reader.GetSectionData(descr.NameTable - addressBase).AsSpan();
 
@@ -500,6 +500,8 @@ public static class PEViewer
                     }
                 }
             }
+
+            Console.ResetColor();
         }
     }
 
