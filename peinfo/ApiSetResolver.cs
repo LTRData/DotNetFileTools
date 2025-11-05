@@ -28,7 +28,7 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
         if (apiSetLookup is null
             || apiSetLookup.IsEmpty
             || moduleNameImport is null
-            || !moduleNameImport.Contains("-l")
+            || !moduleNameImport.Contains("-l", StringComparison.OrdinalIgnoreCase)
             || moduleNameImport.Contains('.') && !moduleNameImport.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
         {
             return false;
@@ -78,7 +78,7 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 
             var peb = RtlGetCurrentPeb();
 
-            var apiSetMapPtr = Marshal.ReadIntPtr(Environment.Is64BitProcess ? peb + 0x68 : 0x38);
+            var apiSetMapPtr = Marshal.ReadIntPtr(peb + (Environment.Is64BitProcess ? 0x68 : 0x38));
 
             if (VmQuery.TryGetAllocationRange(apiSetMapPtr, out var range))
             {
