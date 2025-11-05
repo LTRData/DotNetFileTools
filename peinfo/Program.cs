@@ -165,19 +165,24 @@ Options:
 
         Func<string, Stream> openFileFunc;
 
+        if (files is null || files.Length == 0)
+        {
+            files = [""];
+        }
+
         if (fs is not null)
         {
             openFileFunc = path => fs.OpenFile(path, FileMode.Open, FileAccess.Read);
 
             files = [.. files.SelectMany(f
-                => fs.FileExists(f) ? [f] : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f)))];
+                => f.IndexOfAny('*', '?') < 0 ? [f] : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f)))];
         }
         else
         {
             openFileFunc = path => path is "-" or "" ? Console.OpenStandardInput() : File.OpenRead(path);
 
             files = [.. files.SelectMany(static f
-                => File.Exists(f) ? [f] : Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f)))];
+                => f.IndexOfAny('*', '?') < 0 ? [f] : Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f)))];
         }
 
         if (apiSetFile is not null)
