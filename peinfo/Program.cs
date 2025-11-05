@@ -162,7 +162,7 @@ Options:
 
                 if (showDependencyTree)
                 {
-                    PEViewer.ProcessDependencyTree(file, includeDelayed);
+                    PEViewer.ProcessDependencyTree(file, path, includeDelayed);
                 }
                 else
                 {

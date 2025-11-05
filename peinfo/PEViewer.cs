@@ -1,5 +1,4 @@
 ﻿using Arsenal.ImageMounter.IO.Native;
-using DiscUtils.Streams;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.Formatting;
 using LTRData.Extensions.Native.Memory;
@@ -202,6 +201,8 @@ public static class PEViewer
                 }
             }
 
+            var apiSetLookup = ApiSetResolver.GetApiSetTranslations();
+
             var importSection = peHeader.ImportTableDirectory;
 
             if (importSection.Size > 0
@@ -212,7 +213,7 @@ public static class PEViewer
 
                 var descriptors = MemoryMarshal.Cast<byte, ImageImportDescriptor>(fileData.AsSpan(importSectionAddress, importSection.Size));
 
-                ProcessImportTable(reader, descriptors);
+                ProcessImportTable(reader, descriptors, apiSetLookup);
             }
 
             var delayImportSection = peHeader.DelayImportTableDirectory;
@@ -225,7 +226,7 @@ public static class PEViewer
 
                 var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
 
-                ProcessDelayImportTable(reader, descriptors);
+                ProcessDelayImportTable(reader, descriptors, apiSetLookup);
             }
 
             var exportSection = peHeader.ExportTableDirectory;
@@ -263,6 +264,15 @@ public static class PEViewer
                             // Forwarder
                             var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
 
+                            var delimiter = forwarderString.LastIndexOf('.');
+
+                            var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
+
+                            if (LookupApiSet(apiSetLookup, module, out var apiSetTarget))
+                            {
+                                forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
+                            }
+
                             Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, Forwarded to: {forwarderString})  {name}");
 
                             continue;
@@ -285,6 +295,15 @@ public static class PEViewer
                             // Forwarder
                             var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
 
+                            var delimiter = forwarderString.LastIndexOf('.');
+
+                            var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
+
+                            if (LookupApiSet(apiSetLookup, module, out var apiSetTarget))
+                            {
+                                forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
+                            }
+
                             Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, Forwarded to: {forwarderString})");
 
                             continue;
@@ -297,7 +316,7 @@ public static class PEViewer
         }
     }
 
-    private static void ProcessImportTable(PEReader reader, ReadOnlySpan<ImageImportDescriptor> descriptors)
+    private static void ProcessImportTable(PEReader reader, ReadOnlySpan<ImageImportDescriptor> descriptors, ImmutableDictionary<string, string>? apiSetLookup)
     {
         foreach (var descr in descriptors)
         {
@@ -328,7 +347,16 @@ public static class PEViewer
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.Write("  ");
-            Console.WriteLine(moduleName);
+            Console.Write(moduleName);
+
+            if (LookupApiSet(apiSetLookup, moduleName, out var apiSetTarget))
+            {
+                Console.Write(" (");
+                Console.Write(apiSetTarget);
+                Console.Write(')');
+            }
+
+            Console.WriteLine();
             Console.ResetColor();
 
             var thunksData = reader.GetSectionData((int)descr.OriginalFirstThunk).AsSpan();
@@ -380,7 +408,7 @@ public static class PEViewer
         }
     }
 
-    private static void ProcessDelayImportTable(PEReader reader, ReadOnlySpan<ImageDelayImportDescriptor> descriptors)
+    private static void ProcessDelayImportTable(PEReader reader, ReadOnlySpan<ImageDelayImportDescriptor> descriptors, ImmutableDictionary<string, string>? apiSetLookup)
     {
         foreach (var descr in descriptors)
         {
@@ -416,7 +444,16 @@ public static class PEViewer
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.Write("  ");
-            Console.WriteLine(moduleName);
+            Console.Write(moduleName);
+
+            if (LookupApiSet(apiSetLookup, moduleName, out var apiSetTarget))
+            {
+                Console.Write(" (");
+                Console.Write(apiSetTarget);
+                Console.Write(')');
+            }
+
+            Console.WriteLine();
             Console.ResetColor();
 
             var thunksData = reader.GetSectionData(descr.NameTable - addressBase).AsSpan();
@@ -483,7 +520,7 @@ public static class PEViewer
         }
     }
 
-    public static void ProcessDependencyTree(Stream file, bool includeDelayed)
+    public static void ProcessDependencyTree(Stream file, string filePath, bool includeDelayed)
     {
         var fileData = Program.DecompressData(file.ReadToEnd());
 
@@ -499,6 +536,8 @@ public static class PEViewer
         if (file is FileStream { Name: { } fileName }
             && Path.GetDirectoryName(fileName) is { Length: > 0 } dir)
         {
+            filePath = fileName;
+
             pathsEnum = pathsEnum.Prepend(dir);
             pathsEnum = pathsEnum.Prepend(Path.Combine(dir, "lib"));
         }
@@ -523,16 +562,13 @@ public static class PEViewer
 
         IReadOnlyList<string> paths = [.. pathsEnum];
 
-        var apiSetLookup = paths
-            .Select(path => Path.Combine(path, "apisetschema.dll"))
-            .Where(File.Exists)
-            .Select(ApiSetResolver.GetApiSetTranslations)
-            .FirstOrDefault(dict => dict is not null);
+        var apiSetLookup = ApiSetResolver.GetApiSetTranslations();
 
         ProcessDependencyTree(fileData,
+                              filePath,
                               headers.FileHeader.Machine,
                               modules: new(StringComparer.OrdinalIgnoreCase),
-                              apiSetLookup,
+                              apiSetLookup: apiSetLookup,
                               paths: paths,
                               lastFoundPathIndices: [],
                               indent: 2,
@@ -540,16 +576,25 @@ public static class PEViewer
                               includeDelayed: includeDelayed);
     }
 
-    private static void ProcessDependencyTree(byte[] fileData,
-                                              ImageFileMachine machine,
-                                              Dictionary<string, Exports> modules,
-                                              ImmutableDictionary<string, string>? apiSetLookup,
-                                              IReadOnlyList<string> paths,
-                                              List<int> lastFoundPathIndices,
-                                              int indent,
-                                              bool isDelayedTree,
-                                              bool includeDelayed)
+    private static Exports ProcessDependencyTree(byte[] fileData,
+                                                 string filePath,
+                                                 ImageFileMachine machine,
+                                                 Dictionary<string, Exports> modules,
+                                                 ImmutableDictionary<string, string>? apiSetLookup,
+                                                 IReadOnlyList<string> paths,
+                                                 List<int> lastFoundPathIndices,
+                                                 int indent,
+                                                 bool isDelayedTree,
+                                                 bool includeDelayed)
     {
+        var ownExports = GetExports(fileData);
+
+        var ownExportsRecord = new Exports(filePath, ownExports);
+
+        var ownModuleNameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
+
+        modules[ownModuleNameWithoutExtension] = ownExportsRecord;
+
         foreach (var (moduleNameImport, functions, delayedImport) in EnumerateDependencies(fileData, includeDelayed))
         {
             if (!includeDelayed && delayedImport)
@@ -592,26 +637,37 @@ public static class PEViewer
 
                 if (exports is null)
                 {
-                    exports = new(FullPath: null, Functions: default)
+                    if (ownExports.Length != 0
+                        && functions.All(func => ownExports.Any(ownexp => (func.Name is not null && ownexp.Name == func.Name) || (func.Ordinal != 0 && ownexp.Ordinal == func.Ordinal))))
                     {
-                        Delayed = delayed
-                    };
-
-                    modules[moduleNameWithoutExtension] = exports;
-
-                    var chars = Program.GetIndent(indent);
-
-                    if (delayed)
-                    {
-                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        exports = new(filePath, ownExports);
                     }
                     else
                     {
-                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        exports = new(FullPath: null, Functions: default)
+                        {
+                            Delayed = delayed
+                        };
                     }
 
-                    Console.WriteLine($"{chars}  Could not find {(delayed ? "delay-loaded " : null)}dependency '{moduleName}'");
-                    Console.ResetColor();
+                    modules[moduleNameWithoutExtension] = exports;
+
+                    if (exports.FullPath is null)
+                    {
+                        var chars = Program.GetIndent(indent);
+
+                        if (delayed)
+                        {
+                            Console.ForegroundColor = ConsoleColor.DarkGray;
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                        }
+
+                        Console.WriteLine($"{chars}  Could not find {(delayed ? "delay-loaded " : null)}dependency '{moduleName}'");
+                        Console.ResetColor();
+                    }
                 }
             }
 
@@ -664,10 +720,12 @@ public static class PEViewer
                 }
             }
         }
+
+        return ownExportsRecord;
     }
 
     private static bool LookupApiSet(ImmutableDictionary<string, string>? apiSetLookup,
-                                     string moduleNameImport,
+                                     string? moduleNameImport,
                                      [NotNullWhen(true)] out string? moduleName)
     {
         moduleName = null;
@@ -757,23 +815,16 @@ public static class PEViewer
             Console.WriteLine($"{chars}{tryPath}");
             Console.ResetColor();
 
-            var exports = GetExports(fileData);
-
-            var exportsRecord = new Exports(tryPath, exports);
-
-            var moduleNameWithoutExtension = Path.GetFileNameWithoutExtension(moduleName);
-
-            modules[moduleNameWithoutExtension] = exportsRecord;
-
-            ProcessDependencyTree(fileData,
-                                  expectedMachine,
-                                  modules,
-                                  apiSetLookup,
-                                  paths,
-                                  [pathIndex],
-                                  indent + 2,
-                                  isDelayedTree,
-                                  includeDelayed);
+            var exportsRecord = ProcessDependencyTree(fileData,
+                                                      tryPath,
+                                                      expectedMachine,
+                                                      modules,
+                                                      apiSetLookup,
+                                                      paths,
+                                                      [pathIndex],
+                                                      indent + 2,
+                                                      isDelayedTree,
+                                                      includeDelayed);
 
             return exportsRecord;
         }

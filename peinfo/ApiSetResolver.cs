@@ -1,4 +1,5 @@
 ﻿using LTRData.Extensions.Buffers;
+using LTRData.Extensions.Split;
 using System.Collections.Immutable;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
@@ -163,6 +164,19 @@ public static class ApiSetResolver
 
         return dict.ToImmutable();
     }
+
+    private static ImmutableDictionary<string, string>? defaultApiResolver;
+
+    public static ImmutableDictionary<string, string>? GetApiSetTranslations()
+        => defaultApiResolver ??= Environment.GetEnvironmentVariable("PATH").AsMemory()
+            .TokenEnum(Path.PathSeparator)
+            .Select(m => m.ToString())
+            .Prepend(Environment.GetFolderPath(Environment.SpecialFolder.System))
+            .Where(Directory.Exists)
+            .Select(path => Path.Combine(path, "apisetschema.dll"))
+            .Where(File.Exists)
+            .Select(GetApiSetTranslations)
+            .FirstOrDefault(dict => dict is not null);
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct ApiSetHeader2
