@@ -2,6 +2,7 @@
 using LTRData.Extensions.Native.Memory;
 using LTRData.Extensions.Split;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
@@ -45,25 +46,40 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
     }
 
     public static ApiSetResolver GetApiSetTranslations(string file)
-        => new(GetApiSetTranslations(File.OpenRead(file), PEStreamOptions.Default));
+        => GetApiSetTranslations(File.OpenRead(file), PEStreamOptions.Default);
 
-    public static ImmutableDictionary<string, string>? GetApiSetTranslations(Stream file, PEStreamOptions options)
+    public static ApiSetResolver GetApiSetTranslations(Stream file, PEStreamOptions options)
     {
-        using var reader = new PEReader(file, options);
+        if (file.CanSeek)
+        {
+            using var reader = new PEReader(file, options);
 
-        return GetApiSetTranslations(reader);
+            return GetApiSetTranslations(reader);
+        }
+        else if (!options.HasFlag(PEStreamOptions.IsLoadedImage))
+        {
+            var buffer = file.ReadToEnd();
+
+            using var reader = new PEReader([.. buffer]);
+
+            return GetApiSetTranslations(reader);
+        }
+        else
+        {
+            throw new NotSupportedException("PEStreamOptions.IsLoadedImage not supported with non-seeking devices");
+        }
     }
 
-    public static ImmutableDictionary<string, string>? GetApiSetTranslations(PEReader reader)
+    public static ApiSetResolver GetApiSetTranslations(PEReader reader)
     {
         var section = reader.GetSectionData(".apiset").AsSpan();
 
         if (section.IsEmpty)
         {
-            return null;
+            return Empty;
         }
 
-        return ParseTranslations(section);
+        return new(ParseTranslations(section));
     }
 
     private static ApiSetResolver GetApiSetTranslations()

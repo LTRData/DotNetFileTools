@@ -5,7 +5,9 @@ using DiscUtils.Wim;
 using K4os.Compression.LZ4.Streams;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
+using System;
 using System.IO.Compression;
+using System.Reflection.PortableExecutable;
 
 #if !NET6_0_OR_GREATER
 using ZLibStream = DiscUtils.Compression.ZlibStream;
@@ -41,6 +43,7 @@ public static class Program
         string[] files = [];
         var showDependencyTree = false;
         var includeDelayed = false;
+        string? apiSetFile = null;
 
         var cmds = CommandLineParser.ParseCommandLine(args, StringComparer.Ordinal);
 
@@ -83,14 +86,7 @@ public static class Program
             else if (cmd.Key == "apiset"
                 && cmd.Value.Length == 1)
             {
-                var apiset = ApiSetResolver.GetApiSetTranslations(cmd.Value[0]);
-
-                if (!apiset.HasTranslations)
-                {
-                    Console.WriteLine($"No supported API set translations found in '{cmd.Value[0]}'");
-                }
-
-                ApiSetResolver.Default = apiset;
+                apiSetFile = cmd.Value[0];
             }
             else if (cmd.Key == "apiset"
                 && cmd.Value.Length == 0)
@@ -113,16 +109,23 @@ peinfo [options] filepath1 [filepath2 ...]
 peinfo --image=imagefile [--part=partno] [options] filepath1 [filepath2 ...]
 peinfo --wim=imagefile --index=wimindex [options] filepath1 [filepath2 ...]
 
+Use - as path to specify standard input.
+
 Image files:
     --image=imagefile         Path to disk image file containing the files to analyze.
     --part=partno             Partition number in the disk image to use (1-based).
+
     --wim=imagefile           Path to WIM image file containing the files to analyze.
     --index=wimindex          WIM image index number to use (1-based).
 
 Options:
     --dep                     Show DLL dependency tree for specified files.
+
     --delayed                 Include delay-loaded DLLs in dependency tree.
-    --apiset=path             Specify path to apisetschema.dll used to resolve API sets to DLL names.");
+
+    --apiset=path             Specify path to apisetschema.dll used to resolve API sets
+                              to DLL names. If an image file is specified, this file
+                              is read from detected file system in that image file.");
 
                 return -1;
             }
@@ -160,22 +163,47 @@ Options:
             ? new WimFile(wim).GetImage(wimIndex - 1)
             : null;
 
+        Func<string, Stream> openFileFunc;
+
         if (fs is not null)
         {
-            files = [.. files.SelectMany(f => fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f)))];
+            openFileFunc = path => fs.OpenFile(path, FileMode.Open, FileAccess.Read);
+
+            files = [.. files.SelectMany(f
+                => fs.FileExists(f) ? [f] : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f)))];
         }
         else
         {
-            files = [.. files.SelectMany(static f => Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f)))];
+            openFileFunc = path => path is "-" or "" ? Console.OpenStandardInput() : File.OpenRead(path);
+
+            files = [.. files.SelectMany(static f
+                => File.Exists(f) ? [f] : Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f)))];
+        }
+
+        if (apiSetFile is not null)
+        {
+            var apiset = ApiSetResolver.GetApiSetTranslations(openFileFunc(apiSetFile), PEStreamOptions.Default);
+
+            if (!apiset.HasTranslations)
+            {
+                Console.WriteLine($"No supported API set translations found in '{apiSetFile}'");
+            }
+
+            ApiSetResolver.Default = apiset;
+        }
+
+        if (files.Length == 0)
+        {
+            Console.WriteLine("File not found.");
+
+            return new FileNotFoundException().HResult;
         }
 
         foreach (var path in files)
         {
             try
             {
-                using Stream file = fs is not null
-                    ? fs.OpenFile(path, FileMode.Open, FileAccess.Read)
-                    : File.OpenRead(path);
+                using var file = openFileFunc(path);
 
                 Console.WriteLine();
                 Console.WriteLine(path);
