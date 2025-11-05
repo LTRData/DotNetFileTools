@@ -68,7 +68,8 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 
     private static ApiSetResolver GetApiSetTranslations()
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            && Environment.OSVersion.Version >= new Version(6, 1))
         {
             // On Windows, we can get contents of active system apisetschema.dll directly
             // mapped in process address space
@@ -86,7 +87,12 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 
                 var apiSetMapSpan = new ReadOnlyNativeMemory<byte>(apiSetMapPtr, (int)(range.Size - offset));
 
-                return new(ParseTranslations(apiSetMapSpan.Span));
+                var parsedFromMem = new ApiSetResolver(ParseTranslations(apiSetMapSpan.Span));
+
+                if (parsedFromMem.HasTranslations)
+                {
+                    return parsedFromMem;
+                }
             }
         }
 
