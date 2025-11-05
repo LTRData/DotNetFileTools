@@ -131,7 +131,11 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
                     name = name.Slice(0, lastDelimiter);
                 }
 
-                var namespaceName = name.ToString();
+#if NET6_0_OR_GREATER
+                var namespaceName = $"api-{name}";
+#else
+                var namespaceName = $"api-{name.ToString()}";
+#endif
 
                 var arrayHeader = MemoryMarshal.Read<ApiSetValueArrayHeader2>(apisetSection.Slice(item.DataOffset));
 
@@ -170,7 +174,11 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
                     name = name.Slice(0, lastDelimiter);
                 }
 
-                var namespaceName = name.ToString();
+#if NET6_0_OR_GREATER
+                var namespaceName = $"api-{name}";
+#else
+                var namespaceName = $"api-{name.ToString()}";
+#endif
 
                 var arrayHeader = MemoryMarshal.Read<ApiSetValueArrayHeader3>(apisetSection.Slice(item.DataOffset));
 

@@ -761,15 +761,6 @@ public static class PEViewer
 
         var chars = Program.GetIndent(indent);
 
-        if (isDelayedTree)
-        {
-            Console.ForegroundColor = ConsoleColor.Magenta;
-        }
-        else
-        {
-            Console.ForegroundColor = ConsoleColor.Cyan;
-        }
-
         try
         {
             var fileData = File.ReadAllBytes(tryPath);
@@ -779,6 +770,15 @@ public static class PEViewer
             if (headers.FileHeader.Machine != expectedMachine)
             {
                 return null;
+            }
+
+            if (isDelayedTree)
+            {
+                Console.ForegroundColor = ConsoleColor.Magenta;
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
             }
 
             Console.WriteLine($"{chars}{tryPath}");
