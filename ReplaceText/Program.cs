@@ -6,6 +6,7 @@ using System.Text;
 
 namespace ReplaceText;
 
+#pragma warning disable IDE0079 // Remove unnecessary suppression
 #pragma warning disable IDE0056 // Use index operator
 
 public static class Program
@@ -18,7 +19,7 @@ public static class Program
         {
             searchOption = SearchOption.AllDirectories;
             
-            args = args.Skip(1).ToArray();
+            args = [.. args.Skip(1)];
         }
 
         if (args is null || args.Length < 2 ||

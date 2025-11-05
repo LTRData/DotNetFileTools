@@ -838,16 +838,6 @@ public static class PEViewer
         return null;
     }
 
-    private static string GetDefaultExtension(string moduleName)
-    {
-        if (".sys".Equals(Path.GetExtension(moduleName), StringComparison.OrdinalIgnoreCase))
-        {
-            return ".sys";
-        }
-
-        return ".dll";
-    }
-
     private static ImmutableArray<(ulong Ordinal, string? Name)> GetExports(byte[] fileData)
     {
         using var reader = new PEReader([.. fileData]);

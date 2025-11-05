@@ -15,7 +15,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
-namespace SetFixedPackagesNumbers;
+namespace setpkgver;
+
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable CA1865 // Use char overload
 
 public static class Program
 {
@@ -476,14 +479,14 @@ setpkgver [-options] files ...
                 try
                 {
                     var versions = await resource.GetAllVersionsAsync(packageName, cache, NullLogger.Instance, CancellationToken.None).ConfigureAwait(false);
-                    return versions.ToList();
+                    return [.. versions];
                 }
                 catch (Exception ex)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.Error.WriteLine($"Error checking version for package '{packageName}': {ex.JoinMessages()}");
                     Console.ResetColor();
-                    return Array.Empty<NuGetVersion>();
+                    return [];
                 }
             }).ConfigureAwait(false);
     }
