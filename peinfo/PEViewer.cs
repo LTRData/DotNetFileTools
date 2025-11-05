@@ -129,7 +129,7 @@ public static class PEViewer
 
                         var certSubjectName = cert.Subject;
 
-                        Console.WriteLine($"{"Signed by",-24}{certSubjectName}");
+                        Console.WriteLine($"{"Signed by",-24}{certSubjectName} ({cert.Thumbprint})");
 
                         if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
                             || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))

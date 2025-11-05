@@ -80,6 +80,23 @@ public static class Program
             {
                 includeDelayed = true;
             }
+            else if (cmd.Key == "apiset"
+                && cmd.Value.Length == 1)
+            {
+                var apiset = ApiSetResolver.GetApiSetTranslations(cmd.Value[0]);
+
+                if (!apiset.HasTranslations)
+                {
+                    Console.WriteLine($"No supported API set translations found in '{cmd.Value[0]}'");
+                }
+
+                ApiSetResolver.Default = apiset;
+            }
+            else if (cmd.Key == "apiset"
+                && cmd.Value.Length == 0)
+            {
+                ApiSetResolver.Default = ApiSetResolver.Empty;
+            }
             else if (cmd.Key == ""
                 && cmd.Value.Length >= 1)
             {
@@ -92,17 +109,20 @@ Copyright (c) 2025 - LTR Data, Olof Lagerkvist
 https://ltr-data.se
 
 Syntax:
-peinfo [--dep [--delayed]] filepath1 [filepath2 ...]
-peinfo --image=imagefile [--part=partno] [--dep [--delayed]] filepath1 [filepath2 ...]
-peinfo --wim=imagefile --index=wimindex [--dep [--delayed]] filepath1 [filepath2 ...]
+peinfo [options] filepath1 [filepath2 ...]
+peinfo --image=imagefile [--part=partno] [options] filepath1 [filepath2 ...]
+peinfo --wim=imagefile --index=wimindex [options] filepath1 [filepath2 ...]
 
-Options:
+Image files:
     --image=imagefile         Path to disk image file containing the files to analyze.
     --part=partno             Partition number in the disk image to use (1-based).
     --wim=imagefile           Path to WIM image file containing the files to analyze.
     --index=wimindex          WIM image index number to use (1-based).
+
+Options:
     --dep                     Show DLL dependency tree for specified files.
-    --delayed                 Include delay-loaded DLLs in dependency tree.");
+    --delayed                 Include delay-loaded DLLs in dependency tree.
+    --apiset=path             Specify path to apisetschema.dll used to resolve API sets to DLL names.");
 
                 return -1;
             }

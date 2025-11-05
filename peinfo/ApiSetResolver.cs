@@ -13,9 +13,11 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 {
     public static ApiSetResolver Default
     {
-        get => field ??= new(GetApiSetTranslations());
+        get => field ??= GetApiSetTranslations();
         set => field = value;
     }
+
+    public static ApiSetResolver Empty => field ??= new(null);
 
     public bool HasTranslations => apiSetLookup is not null && !apiSetLookup.IsEmpty;
 
@@ -42,8 +44,8 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
         return apiSetLookup.TryGetValue(moduleNameImport, out moduleName);
     }
 
-    public static ImmutableDictionary<string, string>? GetApiSetTranslations(string file)
-        => GetApiSetTranslations(File.OpenRead(file), PEStreamOptions.Default);
+    public static ApiSetResolver GetApiSetTranslations(string file)
+        => new(GetApiSetTranslations(File.OpenRead(file), PEStreamOptions.Default));
 
     public static ImmutableDictionary<string, string>? GetApiSetTranslations(Stream file, PEStreamOptions options)
     {
@@ -64,7 +66,7 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
         return ParseTranslations(section);
     }
 
-    private static ImmutableDictionary<string, string>? GetApiSetTranslations()
+    private static ApiSetResolver GetApiSetTranslations()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -84,7 +86,7 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 
                 var apiSetMapSpan = new ReadOnlyNativeMemory<byte>(apiSetMapPtr, (int)(range.Size - offset));
 
-                return ParseTranslations(apiSetMapSpan.Span);
+                return new(ParseTranslations(apiSetMapSpan.Span));
             }
         }
 
@@ -97,7 +99,8 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
                 .Select(path => Path.Combine(path, "apisetschema.dll"))
                 .Where(File.Exists)
                 .Select(GetApiSetTranslations)
-                .FirstOrDefault(dict => dict is not null);
+                .FirstOrDefault(dict => dict.HasTranslations)
+                ?? Empty;
     }
 
     private static ImmutableDictionary<string, string>? ParseTranslations(ReadOnlySpan<byte> apisetSection)
