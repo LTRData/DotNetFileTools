@@ -133,9 +133,11 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 
                 var namespaceName = name.ToString();
 
-                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry2>(apisetSection.Slice(item.DataOffset)).Slice(0, 1);
+                var arrayHeader = MemoryMarshal.Read<ApiSetValueArrayHeader2>(apisetSection.Slice(item.DataOffset));
 
-                for (var j = 0; j < 1; j++)
+                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry2>(apisetSection.Slice(item.DataOffset + Unsafe.SizeOf<ApiSetValueArrayHeader2>())).Slice(0, arrayHeader.Count);
+
+                for (var j = 0; j < values.Length; j++)
                 {
                     var entry = values[j];
 
@@ -170,9 +172,11 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 
                 var namespaceName = name.ToString();
 
-                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry3>(apisetSection.Slice(item.DataOffset)).Slice(0, 1);
+                var arrayHeader = MemoryMarshal.Read<ApiSetValueArrayHeader3>(apisetSection.Slice(item.DataOffset));
 
-                for (var j = 0; j < 1; j++)
+                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry3>(apisetSection.Slice(item.DataOffset + Unsafe.SizeOf<ApiSetValueArrayHeader3>())).Slice(0, arrayHeader.Count);
+
+                for (var j = 0; j < values.Length; j++)
                 {
                     var entry = values[j];
 
