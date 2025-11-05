@@ -344,13 +344,15 @@ operation.");
 
         Console.WriteLine($"Opening {source}...");
 
-        using var sourceImage = VirtualDisk.OpenDisk(source, FileAccess.Read, useAsync: false);
+        using var sourceImage = VirtualDisk.OpenDisk(source, FileAccess.Read, useAsync: false)
+            ?? throw new NotSupportedException($"Image file '{source}' not supported");
 
         cancellationToken.ThrowIfCancellationRequested();
 
         Console.WriteLine($"Opening {target}...");
 
-        using var targetImage = VirtualDisk.OpenDisk(target, FileAccess.Read, useAsync: false);
+        using var targetImage = VirtualDisk.OpenDisk(target, FileAccess.Read, useAsync: false)
+            ?? throw new NotSupportedException($"Image file '{target}' not supported");
 
         var diff = Path.Join(diffdir ?? Path.GetDirectoryName(target), $"{Path.GetFileNameWithoutExtension(target.AsSpan())}_diff{Path.GetExtension(target.AsSpan())}");
 
@@ -476,6 +478,11 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         using (var sourceDisk = VirtualDisk.OpenDisk(source, FileAccess.Read))
         {
+            if (sourceDisk is null)
+            {
+                throw new NotSupportedException($"Image file '{source}' not supported");
+            }
+
             var sourceSize = sourceDisk.Content.Length;
 
             if (sourceSize != targetSize)
@@ -501,7 +508,8 @@ operation.");
 
         Console.WriteLine($"Opening {target}...");
 
-        using var targetImage = VirtualDisk.OpenDisk(target, FileAccess.Read, useAsync: false);
+        using var targetImage = VirtualDisk.OpenDisk(target, FileAccess.Read, useAsync: false)
+            ?? throw new NotSupportedException($"Image file '{target}' not supported");
 
         var diff = Path.Join(diffdir ?? Path.GetDirectoryName(target), $"{Path.GetFileNameWithoutExtension(target.AsSpan())}_diff{Path.GetExtension(target.AsSpan())}");
 
@@ -574,7 +582,8 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         Console.WriteLine($"Opening {file}...");
 
-        using var image = VirtualDisk.OpenDisk(file, FileAccess.Read, useAsync: false);
+        using var image = VirtualDisk.OpenDisk(file, FileAccess.Read, useAsync: false)
+            ?? throw new NotSupportedException($"Image file '{file}' not supported");
 
         cancellationToken.ThrowIfCancellationRequested();
 
