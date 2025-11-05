@@ -201,9 +201,9 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             }
         }
 
-        if (opMode == 0)
+        if (opMode == 0 || hiveFile is null)
         {
-            var msg = @"Needs either of --query, --add or --remove";
+            var msg = "Needs --hive=path and either of --query, --add or --remove. Try --help for syntax help.";
 
             Console.WriteLine(StringFormatting.LineFormat(msg.AsSpan(), indentWidth: 2));
 
