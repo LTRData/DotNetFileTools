@@ -1,27 +1,58 @@
 ﻿using LTRData.Extensions.Buffers;
+using LTRData.Extensions.Native.Memory;
 using LTRData.Extensions.Split;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace peinfo;
 
-public static class ApiSetResolver
+public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 {
-    public static ImmutableDictionary<string, string>? GetApiSetTranslations(string file)
+    public static ApiSetResolver Default
     {
-        return GetApiSetTranslations(File.OpenRead(file), PEStreamOptions.Default);
+        get => field ??= new(GetApiSetTranslations());
+        set => field = value;
     }
+
+    public bool HasTranslations => apiSetLookup is not null && !apiSetLookup.IsEmpty;
+
+    public bool TryLookupApiSet(string? moduleNameImport, [NotNullWhen(true)] out string? moduleName)
+    {
+        moduleName = null;
+
+        if (apiSetLookup is null
+            || apiSetLookup.IsEmpty
+            || moduleNameImport is null
+            || !moduleNameImport.Contains("-l")
+            || moduleNameImport.Contains('.') && !moduleNameImport.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var lastDelimited = moduleNameImport.LastIndexOf('-');
+
+        if (lastDelimited >= 0)
+        {
+            moduleNameImport = moduleNameImport.Substring(0, lastDelimited);
+        }
+
+        return apiSetLookup.TryGetValue(moduleNameImport, out moduleName);
+    }
+
+    public static ImmutableDictionary<string, string>? GetApiSetTranslations(string file)
+        => GetApiSetTranslations(File.OpenRead(file), PEStreamOptions.Default);
 
     public static ImmutableDictionary<string, string>? GetApiSetTranslations(Stream file, PEStreamOptions options)
     {
         using var reader = new PEReader(file, options);
 
-        return reader.GetApiSetTranslations();
+        return GetApiSetTranslations(reader);
     }
 
-    public static ImmutableDictionary<string, string>? GetApiSetTranslations(this PEReader reader)
+    public static ImmutableDictionary<string, string>? GetApiSetTranslations(PEReader reader)
     {
         var section = reader.GetSectionData(".apiset").AsSpan();
 
@@ -30,10 +61,46 @@ public static class ApiSetResolver
             return null;
         }
 
-        return CreateTranslations(section);
+        return ParseTranslations(section);
     }
 
-    private static ImmutableDictionary<string, string>? CreateTranslations(ReadOnlySpan<byte> apisetSection)
+    private static ImmutableDictionary<string, string>? GetApiSetTranslations()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // On Windows, we can get contents of active system apisetschema.dll directly
+            // mapped in process address space
+
+            [DllImport("ntdll.dll")]
+            extern static nint RtlGetCurrentPeb();
+
+            var peb = RtlGetCurrentPeb();
+
+            var apiSetMapPtr = Marshal.ReadIntPtr(Environment.Is64BitProcess ? peb + 0x68 : 0x38);
+
+            if (VmQuery.TryGetAllocationRange(apiSetMapPtr, out var range))
+            {
+                var offset = (int)(apiSetMapPtr - range.AllocationBase);
+
+                var apiSetMapSpan = new ReadOnlyNativeMemory<byte>(apiSetMapPtr, (int)(range.Size - offset));
+
+                return ParseTranslations(apiSetMapSpan.Span);
+            }
+        }
+
+        return Environment.GetEnvironmentVariable("PATH").AsMemory()
+                .TokenEnum(Path.PathSeparator)
+                .Select(m => m.ToString())
+                .Prepend(Environment.GetFolderPath(Environment.SpecialFolder.System))
+                .Where(Directory.Exists)
+                .Distinct()
+                .Select(path => Path.Combine(path, "apisetschema.dll"))
+                .Where(File.Exists)
+                .Select(GetApiSetTranslations)
+                .FirstOrDefault(dict => dict is not null);
+    }
+
+    private static ImmutableDictionary<string, string>? ParseTranslations(ReadOnlySpan<byte> apisetSection)
     {
         var version = MemoryMarshal.Read<uint>(apisetSection);
 
@@ -164,19 +231,6 @@ public static class ApiSetResolver
 
         return dict.ToImmutable();
     }
-
-    private static ImmutableDictionary<string, string>? defaultApiResolver;
-
-    public static ImmutableDictionary<string, string>? GetApiSetTranslations()
-        => defaultApiResolver ??= Environment.GetEnvironmentVariable("PATH").AsMemory()
-            .TokenEnum(Path.PathSeparator)
-            .Select(m => m.ToString())
-            .Prepend(Environment.GetFolderPath(Environment.SpecialFolder.System))
-            .Where(Directory.Exists)
-            .Select(path => Path.Combine(path, "apisetschema.dll"))
-            .Where(File.Exists)
-            .Select(GetApiSetTranslations)
-            .FirstOrDefault(dict => dict is not null);
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct ApiSetHeader2

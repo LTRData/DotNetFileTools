@@ -201,8 +201,6 @@ public static class PEViewer
                 }
             }
 
-            var apiSetLookup = ApiSetResolver.GetApiSetTranslations();
-
             var importSection = peHeader.ImportTableDirectory;
 
             if (importSection.Size > 0
@@ -213,7 +211,7 @@ public static class PEViewer
 
                 var descriptors = MemoryMarshal.Cast<byte, ImageImportDescriptor>(fileData.AsSpan(importSectionAddress, importSection.Size));
 
-                ProcessImportTable(reader, descriptors, apiSetLookup);
+                ProcessImportTable(reader, descriptors);
             }
 
             var delayImportSection = peHeader.DelayImportTableDirectory;
@@ -226,7 +224,7 @@ public static class PEViewer
 
                 var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
 
-                ProcessDelayImportTable(reader, descriptors, apiSetLookup);
+                ProcessDelayImportTable(reader, descriptors);
             }
 
             var exportSection = peHeader.ExportTableDirectory;
@@ -268,7 +266,7 @@ public static class PEViewer
 
                             var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
 
-                            if (LookupApiSet(apiSetLookup, module, out var apiSetTarget))
+                            if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
                             {
                                 forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
                             }
@@ -299,7 +297,7 @@ public static class PEViewer
 
                             var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
 
-                            if (LookupApiSet(apiSetLookup, module, out var apiSetTarget))
+                            if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
                             {
                                 forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
                             }
@@ -316,7 +314,7 @@ public static class PEViewer
         }
     }
 
-    private static void ProcessImportTable(PEReader reader, ReadOnlySpan<ImageImportDescriptor> descriptors, ImmutableDictionary<string, string>? apiSetLookup)
+    private static void ProcessImportTable(PEReader reader, ReadOnlySpan<ImageImportDescriptor> descriptors)
     {
         foreach (var descr in descriptors)
         {
@@ -349,7 +347,7 @@ public static class PEViewer
             Console.Write("  ");
             Console.Write(moduleName);
 
-            if (LookupApiSet(apiSetLookup, moduleName, out var apiSetTarget))
+            if (ApiSetResolver.Default.TryLookupApiSet(moduleName, out var apiSetTarget))
             {
                 Console.Write(" (");
                 Console.Write(apiSetTarget);
@@ -408,7 +406,7 @@ public static class PEViewer
         }
     }
 
-    private static void ProcessDelayImportTable(PEReader reader, ReadOnlySpan<ImageDelayImportDescriptor> descriptors, ImmutableDictionary<string, string>? apiSetLookup)
+    private static void ProcessDelayImportTable(PEReader reader, ReadOnlySpan<ImageDelayImportDescriptor> descriptors)
     {
         foreach (var descr in descriptors)
         {
@@ -446,7 +444,7 @@ public static class PEViewer
             Console.Write("  ");
             Console.Write(moduleName);
 
-            if (LookupApiSet(apiSetLookup, moduleName, out var apiSetTarget))
+            if (ApiSetResolver.Default.TryLookupApiSet(moduleName, out var apiSetTarget))
             {
                 Console.Write(" (");
                 Console.Write(apiSetTarget);
@@ -562,13 +560,10 @@ public static class PEViewer
 
         IReadOnlyList<string> paths = [.. pathsEnum];
 
-        var apiSetLookup = ApiSetResolver.GetApiSetTranslations();
-
         ProcessDependencyTree(fileData,
                               filePath,
                               headers.FileHeader.Machine,
                               modules: new(StringComparer.OrdinalIgnoreCase),
-                              apiSetLookup: apiSetLookup,
                               paths: paths,
                               lastFoundPathIndices: [],
                               indent: 2,
@@ -580,7 +575,6 @@ public static class PEViewer
                                                  string filePath,
                                                  ImageFileMachine machine,
                                                  Dictionary<string, Exports> modules,
-                                                 ImmutableDictionary<string, string>? apiSetLookup,
                                                  IReadOnlyList<string> paths,
                                                  List<int> lastFoundPathIndices,
                                                  int indent,
@@ -607,7 +601,7 @@ public static class PEViewer
                 continue;
             }
 
-            if (!LookupApiSet(apiSetLookup, moduleNameImport, out var moduleName))
+            if (!ApiSetResolver.Default.TryLookupApiSet(moduleNameImport, out var moduleName))
             {
                 moduleName = moduleNameImport;
             }
@@ -620,7 +614,7 @@ public static class PEViewer
             {
                 foreach (var i in lastFoundPathIndices.Concat(Enumerable.Range(0, paths.Count).Except(lastFoundPathIndices)))
                 {
-                    exports = TryPath(moduleName, modules, apiSetLookup, paths, i, indent, delayed, includeDelayed, machine);
+                    exports = TryPath(moduleName, modules, paths, i, indent, delayed, includeDelayed, machine);
 
                     if (exports is not null)
                     {
@@ -724,35 +718,10 @@ public static class PEViewer
         return ownExportsRecord;
     }
 
-    private static bool LookupApiSet(ImmutableDictionary<string, string>? apiSetLookup,
-                                     string? moduleNameImport,
-                                     [NotNullWhen(true)] out string? moduleName)
-    {
-        moduleName = null;
-
-        if (apiSetLookup is null
-            || moduleNameImport is null
-            || !moduleNameImport.Contains("-l")
-            || moduleNameImport.Contains('.') && !moduleNameImport.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var lastDelimited = moduleNameImport.LastIndexOf('-');
-
-        if (lastDelimited >= 0)
-        {
-            moduleNameImport = moduleNameImport.Substring(0, lastDelimited);
-        }
-
-        return apiSetLookup.TryGetValue(moduleNameImport, out moduleName);
-    }
-
     private static readonly ImmutableArray<string> defaultExtensions = [".dll", ".sys", ".exe"];
 
     private static Exports? TryPath(string moduleName,
                                     Dictionary<string, Exports> modules,
-                                    ImmutableDictionary<string, string>? apiSetLookup,
                                     IReadOnlyList<string> paths,
                                     int pathIndex,
                                     int indent,
@@ -819,7 +788,6 @@ public static class PEViewer
                                                       tryPath,
                                                       expectedMachine,
                                                       modules,
-                                                      apiSetLookup,
                                                       paths,
                                                       [pathIndex],
                                                       indent + 2,
