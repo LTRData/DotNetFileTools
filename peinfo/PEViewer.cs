@@ -547,6 +547,14 @@ public static class PEViewer
             pathsEnum = pathsEnum.Append(sysDirX86);
             pathsEnum = pathsEnum.Append(Path.Combine(sysDirX86, "drivers"));
         }
+        else if (Environment.Is64BitProcess && headers.FileHeader.Machine == ImageFileMachine.ARM2
+            && Environment.GetFolderPath(Environment.SpecialFolder.Windows) is { Length: > 0 } winDir)
+        {
+            var sysArm32 = Path.Combine(winDir, "SysArm32");
+
+            pathsEnum = pathsEnum.Append(sysArm32);
+            pathsEnum = pathsEnum.Append(Path.Combine(sysArm32, "drivers"));
+        }
 
         if (Environment.GetFolderPath(Environment.SpecialFolder.System) is { Length: > 0 } sysDir)
         {
