@@ -557,6 +557,11 @@ public static class PEViewer
 
         var fileData = Program.DecompressData(file.ReadToEnd());
 
+        if (!fileData.AsSpan(0, 2).SequenceEqual("MZ"u8))
+        {
+            throw new NotSupportedException("Not a valid PE file");
+        }
+
         var headers = NativePE.GetImageNtHeaders(fileData);
 
         Console.WriteLine("Dependency Tree:");
