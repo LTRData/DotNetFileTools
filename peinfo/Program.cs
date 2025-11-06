@@ -157,25 +157,31 @@ Options:
     --nohdr                 Do not display header information for ELF or PE files.
     -q
 
-    --dependents            Show direct DLL dependencies for specified files.
+    --dependents            Show direct module dependencies for specified files.
     --dep
     -d
 
-    --tree                  Show full DLL dependency tree for specified files.
+    --tree                  Show full module dependency tree for specified files.
     -t
 
     --delayed               Include delay-loaded DLLs.
     -z
 
-    --imports               Show imported functions and data.
+    --imports               Show imported symbols.
     -i
 
-    --exports               Show exported functions and data.
+    --exports               Show exported symbols.
     -x
 
     --apiset=path           Specify path to apisetschema.dll used to resolve API sets
                             to DLL names. If an image file is specified, this file
-                            is read from detected file system in that image file.");
+                            is read from detected file system in that image file.
+
+                            By default, if --apiset is not specified, default mappings
+                            are used from in-memory OS provided set on Windows, or
+                            first found apisetschema.dll in PATH on other platforms.
+                            To disable API set translations, specify --apiset without
+                            a file path.");
 
                 return -1;
             }
@@ -282,6 +288,7 @@ Options:
             }
             catch (Exception ex)
             {
+                Console.WriteLine();
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.Error.WriteLine(ex.JoinMessages());
                 Console.ResetColor();
