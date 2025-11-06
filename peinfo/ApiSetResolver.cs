@@ -1,16 +1,18 @@
-﻿using LTRData.Extensions.Buffers;
+﻿using DiscUtils.Streams;
+using LTRData.Extensions.Buffers;
 using LTRData.Extensions.Native.Memory;
 using LTRData.Extensions.Split;
+using System.Collections.Frozen;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using ApiSetDictionary = System.Collections.Frozen.FrozenDictionary<string, string>;
 
 namespace peinfo;
 
-public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
+public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
 {
     public static ApiSetResolver Default
     {
@@ -20,14 +22,19 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
 
     public static ApiSetResolver Empty => field ??= new(null);
 
-    public bool HasTranslations => apiSetLookup is not null && !apiSetLookup.IsEmpty;
+    public bool HasTranslations => apiSetLookup is not null && apiSetLookup.Count > 0;
+
+#if NET9_0_OR_GREATER
+    private readonly FrozenDictionary<string, string>.AlternateLookup<ReadOnlySpan<char>> alternateLookup
+        = apiSetLookup?.GetAlternateLookup<ReadOnlySpan<char>>() ?? default;
+#endif
 
     public bool TryLookupApiSet(string? moduleNameImport, [NotNullWhen(true)] out string? moduleName)
     {
         moduleName = null;
 
         if (apiSetLookup is null
-            || apiSetLookup.IsEmpty
+            || apiSetLookup.Count == 0
             || moduleNameImport is null
             || !moduleNameImport.Contains("-l", StringComparison.OrdinalIgnoreCase)
             || moduleNameImport.Contains('.') && !moduleNameImport.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
@@ -35,6 +42,18 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
             return false;
         }
 
+#if NET9_0_OR_GREATER
+        var moduleNameAlt = moduleNameImport.AsSpan();
+
+        var lastDelimited = moduleNameAlt.LastIndexOf('-');
+
+        if (lastDelimited >= 0)
+        {
+            moduleNameAlt = moduleNameAlt[..lastDelimited];
+        }
+
+        return alternateLookup.TryGetValue(moduleNameAlt, out moduleName);
+#else
         var lastDelimited = moduleNameImport.LastIndexOf('-');
 
         if (lastDelimited >= 0)
@@ -43,6 +62,7 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
         }
 
         return apiSetLookup.TryGetValue(moduleNameImport, out moduleName);
+#endif
     }
 
     public static ApiSetResolver GetApiSetTranslations(string file)
@@ -125,13 +145,13 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
                 ?? Empty;
     }
 
-    private static ImmutableDictionary<string, string>? ParseTranslations(ReadOnlySpan<byte> apisetSection)
+    private static ApiSetDictionary? ParseTranslations(ReadOnlySpan<byte> apisetSection)
     {
         var version = MemoryMarshal.Read<uint>(apisetSection);
 
         int offset;
     
-        var dict = ImmutableDictionary.CreateBuilder<string, string>(StringComparer.OrdinalIgnoreCase);
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (version < 3)
         {
@@ -266,7 +286,7 @@ public class ApiSetResolver(ImmutableDictionary<string, string>? apiSetLookup)
             return null;
         }
 
-        return dict.ToImmutable();
+        return dict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

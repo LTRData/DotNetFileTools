@@ -5,7 +5,6 @@ using DiscUtils.Wim;
 using K4os.Compression.LZ4.Streams;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
-using System;
 using System.IO.Compression;
 using System.Reflection.PortableExecutable;
 
@@ -173,7 +172,9 @@ Options:
                 : throw new DriveNotFoundException($"Index {wimIndex} not found in WIM file"))
             : null;
 
+        Func<string, bool> fileExistsFunc;
         Func<string, Stream> openFileFunc;
+        Func<string, byte[]> readAllBytesFunc;
 
         if (files is null || files.Length == 0)
         {
@@ -182,14 +183,18 @@ Options:
 
         if (fs is not null)
         {
+            fileExistsFunc = fs.FileExists;
             openFileFunc = path => fs.OpenFile(path, FileMode.Open, FileAccess.Read);
+            readAllBytesFunc = fs.ReadAllBytes;
 
             files = [.. files.SelectMany(f
                 => f.IndexOfAny('*', '?') < 0 ? [f] : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f), searchOption))];
         }
         else
         {
+            fileExistsFunc = File.Exists;
             openFileFunc = path => path is "-" or "" ? Console.OpenStandardInput() : File.OpenRead(path);
+            readAllBytesFunc = File.ReadAllBytes;
 
             files = [.. files.SelectMany(f
                 => f.IndexOfAny('*', '?') < 0 ? [f] : Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f), searchOption))];
@@ -225,7 +230,7 @@ Options:
 
                 if (showDependencyTree)
                 {
-                    PEViewer.ProcessDependencyTree(file, path, includeDelayed);
+                    PEViewer.ProcessDependencyTree(file, fileExistsFunc, readAllBytesFunc, path, includeDelayed);
                 }
                 else
                 {
@@ -246,18 +251,6 @@ Options:
 
     public static void ProcessFile(Stream file)
         => ProcessFile(file.ReadToEnd());
-
-    internal static byte[] ReadToEnd(this Stream file)
-    {
-        if (file.CanSeek)
-        {
-            return file.ReadExactly((int)(file.Length - file.Position));
-        }
-        
-        using var ms = new MemoryStream();
-        file.CopyTo(ms);
-        return ms.ToArray();
-    }
 
     public static void ProcessFile(byte[] fileData)
     {

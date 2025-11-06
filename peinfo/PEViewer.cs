@@ -1,4 +1,6 @@
 ﻿using Arsenal.ImageMounter.IO.Native;
+using DiscUtils;
+using DiscUtils.Streams;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.Formatting;
 using LTRData.Extensions.Native.Memory;
@@ -6,6 +8,7 @@ using LTRData.Extensions.Split;
 using System.Buffers;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -520,8 +523,17 @@ public static class PEViewer
         }
     }
 
-    public static void ProcessDependencyTree(Stream file, string filePath, bool includeDelayed)
+    public static void ProcessDependencyTree(Stream file,
+                                             Func<string, bool> fileExistsFunc,
+                                             Func<string, byte[]> readAllBytesFunc,
+                                             string filePath,
+                                             bool includeDelayed)
     {
+        if (file is FileStream { Name: { Length: > 0 } fileName })
+        {
+            filePath = fileName;
+        }
+
         var fileData = Program.DecompressData(file.ReadToEnd());
 
         var headers = NativePE.GetImageNtHeaders(fileData);
@@ -533,48 +545,49 @@ public static class PEViewer
             .TokenEnum(Path.PathSeparator)
             .Select(m => m.ToString());
 
-        if (file is FileStream { Name: { } fileName }
-            && Path.GetDirectoryName(fileName) is { Length: > 0 } dir)
-        {
-            filePath = fileName;
-
-            pathsEnum = pathsEnum.Prepend(dir);
-            pathsEnum = pathsEnum.Prepend(Path.Combine(dir, "lib"));
-        }
-
         // If running as 64-bit process analyzing 32-bit file, add SysWOW64 first
         if (Environment.Is64BitProcess && headers.FileHeader.Machine == ImageFileMachine.I386
             && Environment.GetFolderPath(Environment.SpecialFolder.SystemX86) is { Length: > 0 } sysDirX86)
         {
-            pathsEnum = pathsEnum.Append(sysDirX86);
-            pathsEnum = pathsEnum.Append(Path.Combine(sysDirX86, "drivers"));
+            pathsEnum = pathsEnum
+                .Append(sysDirX86)
+                .Append(Path.Combine(sysDirX86, "drivers"));
         }
         else if (Environment.Is64BitProcess && headers.FileHeader.Machine == ImageFileMachine.ARM2
             && Environment.GetFolderPath(Environment.SpecialFolder.Windows) is { Length: > 0 } winDir)
         {
             var sysArm32 = Path.Combine(winDir, "SysArm32");
 
-            pathsEnum = pathsEnum.Append(sysArm32);
-            pathsEnum = pathsEnum.Append(Path.Combine(sysArm32, "drivers"));
+            pathsEnum = pathsEnum
+                .Append(sysArm32)
+                .Append(Path.Combine(sysArm32, "drivers"));
         }
 
         if (Environment.GetFolderPath(Environment.SpecialFolder.System) is { Length: > 0 } sysDir)
         {
-            pathsEnum = pathsEnum.Append(sysDir);
-            pathsEnum = pathsEnum.Append(Path.Combine(sysDir, "drivers"));
+            pathsEnum = pathsEnum
+                .Append(sysDir)
+                .Append(Path.Combine(sysDir, "drivers"));
         }
 
-        pathsEnum = pathsEnum
+        var searchPaths = pathsEnum
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Where(Directory.Exists);
+            .Where(Directory.Exists)
+            .Select(path => (FileExistsFunc: (Func<string, bool>)File.Exists, ReadAllBytesFunc: (Func<string, byte[]>)File.ReadAllBytes, Path: path));
 
-        IReadOnlyList<string> paths = [.. pathsEnum];
+        if (Path.GetDirectoryName(filePath) is { Length: > 0 } dir)
+        {
+            searchPaths = searchPaths
+                .Prepend((FileExistsFunc: fileExistsFunc, ReadAllBytesFunc: readAllBytesFunc, Path: Path.Combine(dir, "drivers")))
+                .Prepend((FileExistsFunc: fileExistsFunc, ReadAllBytesFunc: readAllBytesFunc, Path: Path.Combine(dir, "lib")))
+                .Prepend((FileExistsFunc: fileExistsFunc, ReadAllBytesFunc: readAllBytesFunc, Path: dir));
+        }
 
         ProcessDependencyTree(fileData,
                               filePath,
                               headers.FileHeader.Machine,
                               modules: new(StringComparer.OrdinalIgnoreCase),
-                              paths: paths,
+                              paths: [.. searchPaths],
                               lastFoundPathIndices: [],
                               indent: 2,
                               isDelayedTree: false,
@@ -585,7 +598,7 @@ public static class PEViewer
                                                  string filePath,
                                                  ImageFileMachine machine,
                                                  Dictionary<string, Exports> modules,
-                                                 IReadOnlyList<string> paths,
+                                                 IReadOnlyList<(Func<string, bool> FileExistsFunc, Func<string, byte[]> ReadAllBytesFunc, string Path)> paths,
                                                  List<int> lastFoundPathIndices,
                                                  int indent,
                                                  bool isDelayedTree,
@@ -732,15 +745,15 @@ public static class PEViewer
 
     private static Exports? TryPath(string moduleName,
                                     Dictionary<string, Exports> modules,
-                                    IReadOnlyList<string> paths,
+                                    IReadOnlyList<(Func<string, bool> FileExistsFunc, Func<string, byte[]> ReadAllBytesFunc, string Path)> paths,
                                     int pathIndex,
                                     int indent,
                                     bool isDelayedTree,
                                     bool includeDelayed, ImageFileMachine expectedMachine)
     {
-        var tryPath = Path.Combine(paths[pathIndex], moduleName);
+        var tryPath = Path.Combine(paths[pathIndex].Path, moduleName);
 
-        if (!File.Exists(tryPath))
+        if (!paths[pathIndex].FileExistsFunc(tryPath))
         {
             if (moduleName.Contains('.'))
             {
@@ -753,7 +766,7 @@ public static class PEViewer
             {
                 tryExtPath = tryPath + extension;
 
-                if (File.Exists(tryExtPath))
+                if (paths[pathIndex].FileExistsFunc(tryExtPath))
                 {
                     break;
                 }
@@ -773,7 +786,7 @@ public static class PEViewer
 
         try
         {
-            var fileData = File.ReadAllBytes(tryPath);
+            var fileData = paths[pathIndex].ReadAllBytesFunc(tryPath);
 
             var headers = NativePE.GetImageNtHeaders(fileData); // Validate PE file
 
