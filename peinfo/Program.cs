@@ -102,12 +102,12 @@ public static class Program
             else if (cmd.Key is "i" or "imports"
                 && cmd.Value.Length == 0)
             {
-                includeDelayed = true;
+                showImports = true;
             }
             else if (cmd.Key is "x" or "exports"
                 && cmd.Value.Length == 0)
             {
-                includeDelayed = true;
+                showExports = true;
             }
             else if (cmd.Key == "apiset"
                 && cmd.Value.Length == 1)
