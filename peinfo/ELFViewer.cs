@@ -1,5 +1,7 @@
 ﻿using Arsenal.ImageMounter.IO.Native;
+using DiscUtils.Streams;
 using LTRData.Extensions.Buffers;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace peinfo;
@@ -102,6 +104,7 @@ public static class ELFViewer
             }
 
             bool is64 = elf.cls == ElfClass.ELFCLASS64;
+            bool isLittleEndian = elf.data == ElfData.ELFDATA2LSB;
 
             for (ushort i = 0; i < end.ProgramHeaderEntryCount; i++)
             {
@@ -112,12 +115,12 @@ public static class ELFViewer
                 if (is64)
                 {
                     var header = MemoryMarshal.Read<ElfProgramHeader64>(entryData);
-                    programHeader = new(header.p_type, header.p_offset, header.p_vaddr, header.p_size, header.p_memsz);
+                    programHeader = header.Parse(isLittleEndian);
                 }
                 else
                 {
                     var header = MemoryMarshal.Read<ElfProgramHeader32>(entryData);
-                    programHeader = new(header.p_type, header.p_offset, header.p_vaddr, header.p_size, header.p_memsz);
+                    programHeader = header.Parse(isLittleEndian);
                 }
 
                 phs.Add(programHeader);
@@ -139,12 +142,12 @@ public static class ELFViewer
                 for (int off = 0; off + step <= dynSpan.Length; off += step)
                 {
                     long tag = is64
-                        ? (long)MemoryMarshal.Read<ulong>(dynSpan.Slice(off))
-                        : (int)MemoryMarshal.Read<uint>(dynSpan.Slice(off));
+                        ? (long)MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off)).Parse(isLittleEndian)
+                        : (int)MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off)).Parse(isLittleEndian);
 
                     ulong val = is64
-                        ? MemoryMarshal.Read<ulong>(dynSpan.Slice(off + 8))
-                        : MemoryMarshal.Read<uint>(dynSpan.Slice(off + 4));
+                        ? MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off + 8)).Parse(isLittleEndian)
+                        : MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off + 4)).Parse(isLittleEndian);
 
                     if (tag == 0)
                     {
@@ -189,10 +192,10 @@ public static class ELFViewer
                 ulong dtStrSz = 0;
                 for (int off = 0; off + step <= dynSpan.Length; off += step)
                 {
-                    long tag = is64 ? (long)MemoryMarshal.Read<ulong>(dynSpan.Slice(off))
-                                    : (int)MemoryMarshal.Read<uint>(dynSpan.Slice(off));
-                    ulong val = is64 ? MemoryMarshal.Read<ulong>(dynSpan.Slice(off + (is64 ? 8 : 4)))
-                                     : MemoryMarshal.Read<uint>(dynSpan.Slice(off + 4));
+                    long tag = is64 ? (long)MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off)).Parse(isLittleEndian)
+                                    : (int)MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off)).Parse(isLittleEndian);
+                    ulong val = is64 ? MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off + (is64 ? 8 : 4))).Parse(isLittleEndian)
+                                     : MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off + 4)).Parse(isLittleEndian);
 
                     if (tag == 0)
                     {
@@ -288,30 +291,96 @@ public static class ELFViewer
     }
 }
 
+public unsafe struct ElfUInt32
+{
+    private fixed byte value[sizeof(uint)];
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+    private ReadOnlySpan<byte> Span => MemoryMarshal.CreateReadOnlySpan(ref value[0], sizeof(uint));
+#else
+    private ReadOnlySpan<byte> Span => new(Unsafe.AsPointer(ref value[0]), sizeof(uint));
+#endif
+
+    public uint Parse(bool asLittleEndian)
+    {
+        if (asLittleEndian)
+        {
+            return EndianUtilities.ToUInt32LittleEndian(Span);
+        }
+        else
+        {
+            return EndianUtilities.ToUInt32BigEndian(Span);
+        }
+    }
+}
+
+public unsafe struct ElfUInt64
+{
+    private fixed byte value[sizeof(ulong)];
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
+    private ReadOnlySpan<byte> Span => MemoryMarshal.CreateReadOnlySpan(ref value[0], sizeof(ulong));
+#else
+    private ReadOnlySpan<byte> Span => new(Unsafe.AsPointer(ref value[0]), sizeof(ulong));
+#endif
+
+    public ulong Parse(bool asLittleEndian)
+    {
+        if (asLittleEndian)
+        {
+            return EndianUtilities.ToUInt64LittleEndian(Span);
+        }
+        else
+        {
+            return EndianUtilities.ToUInt64BigEndian(Span);
+        }
+    }
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly struct ElfProgramHeader32
 {
-    public readonly uint p_type;
-    public readonly uint p_offset;
-    public readonly uint p_vaddr;
-    public readonly uint p_paddr;
-    public readonly uint p_size;
-    public readonly uint p_memsz;
-    public readonly uint p_flags;
-    public readonly uint p_align;
+    public readonly ElfUInt32 p_type;
+    public readonly ElfUInt32 p_offset;
+    public readonly ElfUInt32 p_vaddr;
+    public readonly ElfUInt32 p_paddr;
+    public readonly ElfUInt32 p_size;
+    public readonly ElfUInt32 p_memsz;
+    public readonly ElfUInt32 p_flags;
+    public readonly ElfUInt32 p_align;
+
+    public ElfProgramHeader Parse(bool isLittleEndian)
+    {
+        return new(
+            p_type.Parse(isLittleEndian),
+            p_offset.Parse(isLittleEndian),
+            p_vaddr.Parse(isLittleEndian),
+            p_size.Parse(isLittleEndian),
+            p_memsz.Parse(isLittleEndian));
+    }
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly struct ElfProgramHeader64
 {
-    public readonly uint p_type;
-    public readonly uint p_flags;
-    public readonly ulong p_offset;
-    public readonly ulong p_vaddr;
-    public readonly ulong p_paddr;
-    public readonly ulong p_size;
-    public readonly ulong p_memsz;
-    public readonly ulong p_align;
+    public readonly ElfUInt32 p_type;
+    public readonly ElfUInt32 p_flags;
+    public readonly ElfUInt64 p_offset;
+    public readonly ElfUInt64 p_vaddr;
+    public readonly ElfUInt64 p_paddr;
+    public readonly ElfUInt64 p_size;
+    public readonly ElfUInt64 p_memsz;
+    public readonly ElfUInt64 p_align;
+
+    public ElfProgramHeader Parse(bool isLittleEndian)
+    {
+        return new(
+            p_type.Parse(isLittleEndian),
+            p_offset.Parse(isLittleEndian),
+            p_vaddr.Parse(isLittleEndian),
+            p_size.Parse(isLittleEndian),
+            p_memsz.Parse(isLittleEndian));
+    }
 }
 
 public readonly record struct ElfProgramHeader(ulong Type, ulong Offset, ulong Vaddr, ulong Filesz, ulong Memsz);
