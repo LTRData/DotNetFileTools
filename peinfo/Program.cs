@@ -1,12 +1,21 @@
-﻿using DiscUtils;
+﻿using Aspose.Zip;
+using Aspose.Zip.Cab;
+using Aspose.Zip.SevenZip;
+using Aspose.Zip.Xz;
+using DiscUtils;
+using DiscUtils.Archives;
 using DiscUtils.Compression;
 using DiscUtils.Streams;
 using DiscUtils.Wim;
 using K4os.Compression.LZ4.Streams;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
+using LTRData.Extensions.Native;
 using System.IO.Compression;
 using System.Reflection.PortableExecutable;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
 
 #if !NET6_0_OR_GREATER
 using ZLibStream = DiscUtils.Compression.ZlibStream;
@@ -40,9 +49,12 @@ public static class Program
         string? wimPath = null;
         var wimIndex = 1;
         string[] files = [];
+        var showDependencies = false;
         var showDependencyTree = false;
         var includeDelayed = false;
         string? apiSetFile = null;
+        var showImports = false;
+        var showExports = false;
         var searchOption = SearchOption.TopDirectoryOnly;
 
         var cmds = CommandLineParser.ParseCommandLine(args, StringComparer.Ordinal);
@@ -72,14 +84,28 @@ public static class Program
                 && cmds.ContainsKey("wim"))
             {
             }
-            else if (cmd.Key == "dep"
+            else if (cmd.Key is "d" or "dep" or "dependents"
                 && cmd.Value.Length == 0)
             {
-                showDependencyTree = true;
+                showDependencies = true;
             }
-            else if (cmd.Key == "delayed"
-                && cmd.Value.Length == 0
-                && cmds.ContainsKey("dep"))
+            else if (cmd.Key is "t" or "tree"
+                && cmd.Value.Length == 0)
+            {
+                showDependencies = true;
+            }
+            else if (cmd.Key is "z" or "delayed"
+                && cmd.Value.Length == 0)
+            {
+                includeDelayed = true;
+            }
+            else if (cmd.Key is "i" or "imports"
+                && cmd.Value.Length == 0)
+            {
+                includeDelayed = true;
+            }
+            else if (cmd.Key is "x" or "exports"
+                && cmd.Value.Length == 0)
             {
                 includeDelayed = true;
             }
@@ -117,23 +143,35 @@ peinfo --wim=imagefile --index=wimindex [options] filepath1 [filepath2 ...]
 Use - as path to specify standard input.
 
 Image files:
-    --image=imagefile         Path to disk image file containing the files to analyze.
-    --part=partno             Partition number in the disk image to use (1-based).
+    --image=imagefile       Path to disk image file containing the files to analyze.
+    --part=partno           Partition number in the disk image to use (1-based).
 
-    --wim=imagefile           Path to WIM image file containing the files to analyze.
-    --index=wimindex          WIM image index number to use (1-based).
+    --wim=imagefile         Path to WIM image file containing the files to analyze.
+    --index=wimindex        WIM image index number to use (1-based).
 
 Options:
-    --recurse                 Recurse into subdirectories.
+    --recurse               Recurse into subdirectories.
     -r
 
-    --dep                     Show DLL dependency tree for specified files.
+    --dependents            Show direct DLL dependencies for specified files.
+    --dep
+    -d
 
-    --delayed                 Include delay-loaded DLLs in dependency tree.
+    --tree                  Show full DLL dependency tree for specified files.
+    -t
 
-    --apiset=path             Specify path to apisetschema.dll used to resolve API sets
-                              to DLL names. If an image file is specified, this file
-                              is read from detected file system in that image file.");
+    --delayed               Include delay-loaded DLLs.
+    -z
+
+    --imports               Show imported functions and data.
+    -i
+
+    --exports               Show exported functions and data.
+    -x
+
+    --apiset=path           Specify path to apisetschema.dll used to resolve API sets
+                            to DLL names. If an image file is specified, this file
+                            is read from detected file system in that image file.");
 
                 return -1;
             }
@@ -188,7 +226,9 @@ Options:
             readAllBytesFunc = fs.ReadAllBytes;
 
             files = [.. files.SelectMany(f
-                => f.IndexOfAny('*', '?') < 0 ? [f] : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f), searchOption))];
+                => searchOption == SearchOption.TopDirectoryOnly && f.IndexOfAny('*', '?') < 0
+                ? [f]
+                : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f), searchOption))];
         }
         else
         {
@@ -197,7 +237,9 @@ Options:
             readAllBytesFunc = File.ReadAllBytes;
 
             files = [.. files.SelectMany(f
-                => f.IndexOfAny('*', '?') < 0 ? [f] : Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f), searchOption))];
+                => searchOption == SearchOption.TopDirectoryOnly && f.IndexOfAny('*', '?') < 0
+                ? [f]
+                : Directory.EnumerateFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(f), searchOption))];
         }
 
         if (apiSetFile is not null)
@@ -234,7 +276,7 @@ Options:
                 }
                 else
                 {
-                    ProcessFile(file);
+                    ProcessFile(file, includeDelayed, showDependencies, showImports, showExports);
                 }
             }
             catch (Exception ex)
@@ -249,47 +291,85 @@ Options:
         return errCode;
     }
 
-    public static void ProcessFile(Stream file)
-        => ProcessFile(file.ReadToEnd());
+    public static void ProcessFile(Stream file, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
+        => ProcessFile(file.ReadToEnd(), includeDelayed, showDependencies, showImports, showExports);
 
-    public static void ProcessFile(byte[] fileData)
+    public static void ProcessFile(byte[] fileData, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
     {
         fileData = DecompressData(fileData);
 
-        if (fileData[0] == 'P' && fileData[1] == 'K')
+        if (fileData.Length < 512)
+        {
+            Console.WriteLine();
+            Console.WriteLine("File too small to be a valid PE file or ELF file.");
+        }
+        else if (fileData[0] == 'P' && fileData[1] == 'K' && fileData[2] == 0x03 && fileData[3] == 0x04)
         {
             Console.WriteLine();
             Console.WriteLine("ZIP archive detected, processing entries...");
 
-            ProcessZipFile(fileData);
+            ProcessZipFile(fileData, includeDelayed, showDependencies, showImports, showExports);
             return;
         }
-
-        if (fileData[0] == 'M' && fileData[1] == 'Z')
+        else if (fileData[0] == 0xfd && fileData.AsSpan(1, 4).SequenceEqual("7zXZ"u8))
         {
-            PEViewer.ProcessPEFile(fileData);
+            Console.WriteLine();
+            Console.WriteLine("XZ archive detected, processing entries...");
+
+            ProcessArchive(new XzArchive(new MemoryStream(fileData)), includeDelayed, showDependencies, showImports, showExports);
             return;
         }
+        else if (fileData[0] == 0x37 && fileData[1] == 0x7a && fileData[2] == 0xbc && fileData[3] == 0xaf && fileData[4] == 0x27 && fileData[5] == 0x1c && fileData[6] == 0x00)
+        {
+            Console.WriteLine();
+            Console.WriteLine("7zip archive detected, processing entries...");
 
-        if (fileData[0] == 127 && fileData[1] == 'E' && fileData[2] == 'L' && fileData[3] == 'F')
+            ProcessArchive(new SevenZipArchive(new MemoryStream(fileData)), includeDelayed, showDependencies, showImports, showExports);
+            return;
+        }
+        else if (fileData[0x100] == 0 && fileData.AsSpan(0x101, 5).SequenceEqual("ustar"u8))
+        {
+            Console.WriteLine();
+            Console.WriteLine("TAR archive detected, processing entries...");
+
+            ProcessTarFile(fileData, includeDelayed, showDependencies, showImports, showExports);
+            return;
+        }
+        else if (fileData.AsSpan(0, 4).SequenceEqual("MSCF"u8) && fileData.AsSpan(4, 4).IsBufferZero())
+        {
+            Console.WriteLine();
+            Console.WriteLine("CAB archive detected, processing entries...");
+
+            ProcessArchive(new CabArchive(new MemoryStream(fileData)), includeDelayed, showDependencies, showImports, showExports);
+            return;
+        }
+        else if (fileData.AsSpan(0, 2).SequenceEqual("MZ"u8))
+        {
+            PEViewer.ProcessPEFile(fileData, includeDelayed, showDependencies, showImports, showExports);
+            return;
+        }
+        else if (fileData[0] == 127 && fileData.AsSpan(1, 3).SequenceEqual("ELF"u8))
         {
             ELFViewer.ProcessELFFile(fileData);
             return;
         }
+        else
+        {
+            Console.WriteLine();
+            Console.WriteLine("Not a valid PE or ELF file.");
+        }
 
-        Console.WriteLine("Not a valid PE or ELF file. Initial data:");
-        HexExtensions.WriteHex(Console.Out, fileData.Take(32));
-
-        return;
+        Console.WriteLine("Initial file data:");
+        HexExtensions.WriteHex(Console.Out, fileData.Take(512));
     }
 
     internal static byte[] DecompressData(byte[] fileData)
     {
         for (; ; )
         {
-            if (fileData.Length < 256)
+            if (fileData.Length < 8)
             {
-                throw new InvalidDataException("File too small to be a valid PE file or ELF file");
+                return fileData;
             }
 
             if (fileData[0] == 0x1f && fileData[1] == 0x8b)
@@ -336,7 +416,7 @@ Options:
                 continue;
             }
 
-            if (fileData[0] == 'B' && fileData[1] == 'Z' && fileData[2] == 'h')
+            if (fileData.AsSpan(0, 3).SequenceEqual("BZh"u8))
             {
                 Console.WriteLine();
                 Console.WriteLine("BZip2 compressed file detected, decompressing...");
@@ -347,13 +427,150 @@ Options:
                 continue;
             }
 
+            if (fileData.AsSpan(0, 4).SequenceEqual("KWAJ"u8) && fileData[4] == 0x88 && fileData[5] == 0xf0 && fileData[6] == 0x27 && fileData[7] == 0xd1)
+            {
+                Console.WriteLine();
+                Console.WriteLine("KWAJ compressed detected, decompressing...");
+
+                fileData = DecompressKwaj(fileData);
+            }
+
+            if (fileData.AsSpan(0, 4).SequenceEqual("SZDD"u8) && fileData[4] == 0x88 && fileData[5] == 0xf0 && fileData[6] == 0x27 && fileData[7] == 0x33)
+            {
+                Console.WriteLine();
+                Console.WriteLine("SZDD compressed detected, decompressing...");
+
+                fileData = DecompressSzdd(fileData);
+            }
+
             break;
         }
 
         return fileData;
     }
 
-    private static void ProcessZipFile(byte[] fileData)
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private readonly struct KwajHeader
+    {
+        public enum CompressionMethod : ushort
+        {
+            None = 0x00,
+            Not = 0x01,
+            Lzss = 0x02,
+            Lzh = 0x03,
+            MsZip = 0x04
+        }
+
+        public readonly ulong Magic;
+        public readonly CompressionMethod CompressionMode;
+        public readonly ushort DataOffset;
+        public readonly ushort ExtensionFlags;
+        public readonly ushort Length;
+    }
+
+    public static byte[] DecompressKwaj(byte[] fileData)
+    {
+        var header = MemoryMarshal.Read<KwajHeader>(fileData);
+
+        if ((header.ExtensionFlags & 0x1) == 0)
+        {
+            throw new NotSupportedException($"KWAJ variant not supported");
+        }
+
+        switch (header.CompressionMode)
+        {
+            case KwajHeader.CompressionMethod.None:
+                return fileData.AsSpan(header.DataOffset, header.Length).ToArray();
+
+            case KwajHeader.CompressionMethod.Not:
+                var buffer = fileData.AsSpan(header.DataOffset, header.Length).ToArray();
+
+                for (var i = 0; i < buffer.Length; i++)
+                {
+                    buffer[i] ^= 0xff;
+                }
+
+                return buffer;
+
+            case KwajHeader.CompressionMethod.MsZip:
+                var offset = (int)header.DataOffset;
+
+                var result = new byte[header.Length];
+
+                var outStream = new MemoryStream(result);
+
+                while (offset + 4 < fileData.Length)
+                {
+                    var blockLength = MemoryMarshal.Read<ushort>(fileData.AsSpan(offset));
+                    using var deflate = new DeflateStream(new MemoryStream(fileData, offset + 4, blockLength - 2), CompressionMode.Decompress);
+                    deflate.CopyTo(outStream);
+
+                    offset += 2 + blockLength;
+                }
+
+                return result;
+
+            default:
+                throw new NotSupportedException($"Compression mode '{header.CompressionMode}' not supported");
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private readonly struct SzddHeader
+    {
+        public readonly ulong Magic;
+        public readonly byte CompressionMode;
+        public readonly byte MissingChar;
+        public readonly ushort Length;
+    }
+
+    public static byte[] DecompressSzdd(byte[] fileData)
+    {
+        var header = MemoryMarshal.Read<SzddHeader>(fileData);
+
+        var result = new byte[header.Length];
+
+        Span<byte> window = stackalloc byte[4096];
+
+        window.Clear();
+
+        var pos = window.Length - Unsafe.SizeOf<SzddHeader>();
+        var i = Unsafe.SizeOf<SzddHeader>();
+        var o = 0;
+
+        for (; i < fileData.Length; )
+        {
+            int control = fileData[i++];
+            
+            for (int cbit = 0x01; (cbit & 0xFF) != 0; cbit <<= 1)
+            {
+                if ((control & cbit) != 0)
+                {
+                    /* literal */
+                    result[o++] = (window[pos++] = fileData[i++]);
+                }
+                else
+                {
+                    /* match */
+                    int matchpos = fileData[i++];
+                    int matchlen = fileData[i++];
+                    matchpos |= (matchlen & 0xF0) << 4;
+                    matchlen = (matchlen & 0x0F) + 3;
+
+                    while (matchlen-- > 0)
+                    {
+                        result[o++] = (window[pos++] = window[matchpos++]);
+                        pos &= 4095;
+                        matchpos &= 4095;
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static void ProcessZipFile(byte[] fileData, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
     {
         using var zip = new ZipArchive(new MemoryStream(fileData), ZipArchiveMode.Read, leaveOpen: false);
 
@@ -367,11 +584,94 @@ Options:
             Console.WriteLine();
             Console.WriteLine(entry.FullName);
 
-            using var entryStream = entry.Open();
+            try
+            {
+                using var entryStream = entry.Open();
 
-            var entryData = entryStream.ReadExactly((int)entry.Length);
+                var entryData = entryStream.ReadExactly((int)entry.Length);
 
-            ProcessFile(entryData);
+                ProcessFile(entryData, includeDelayed, showDependencies, showImports, showExports);
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine(ex.JoinMessages());
+                Console.ResetColor();
+            }
+        }
+    }
+
+    private static void ProcessTarFile(byte[] fileData, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
+    {
+        foreach (var entry in TarFile.EnumerateFiles(new MemoryStream(fileData)))
+        {
+            if (entry.Length == 0)
+            {
+                continue;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine(entry.Name);
+
+            try
+            {
+                using var entryStream = entry.GetStream();
+
+                if (entryStream is null)
+                {
+                    continue;
+                }
+
+                var entryData = entryStream.ReadToEnd();
+
+                ProcessFile(entryData, includeDelayed, showDependencies, showImports, showExports);
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine(ex.JoinMessages());
+                Console.ResetColor();
+            }
+        }
+    }
+
+    private static void ProcessArchive(IArchive archive, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
+    {
+        foreach (var entry in archive.FileEntries)
+        {
+            Console.WriteLine();
+            Console.WriteLine(entry.Name);
+
+            try
+            {
+                using var entryStream = entry.Length is { } length ? new MemoryStream((int)length) : new MemoryStream();
+                entry.Extract(entryStream);
+
+                if (entryStream.Length == 0)
+                {
+                    continue;
+                }
+
+                byte[] entryData;
+
+                if (entryStream.TryGetBuffer(out var buffer) && buffer.Array!.Length == entryStream.Length)
+                {
+                    entryData = buffer.Array!;
+                }
+                else
+                {
+                    entryStream.Position = 0;
+                    entryData = entryStream.ReadToEnd();
+                }
+
+                ProcessFile(entryData, includeDelayed, showDependencies, showImports, showExports);
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine(ex.JoinMessages());
+                Console.ResetColor();
+            }
         }
     }
 

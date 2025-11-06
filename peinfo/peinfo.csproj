@@ -18,6 +18,7 @@
     <PackageReference Include="LTRData.ExFat.DiscUtils" Version="*" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="*" />
     <PackageReference Include="K4os.Compression.LZ4.Streams" Version="*" />
+    <PackageReference Include="Aspose.Zip" Version="*" />
   </ItemGroup>
   
 </Project>

@@ -1,5 +1,4 @@
 ﻿using Arsenal.ImageMounter.IO.Native;
-using DiscUtils;
 using DiscUtils.Streams;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.Formatting;
@@ -7,8 +6,6 @@ using LTRData.Extensions.Native.Memory;
 using LTRData.Extensions.Split;
 using System.Buffers;
 using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -20,7 +17,7 @@ namespace peinfo;
 
 public static class PEViewer
 {
-    public static void ProcessPEFile(byte[] fileData)
+    public static void ProcessPEFile(byte[] fileData, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
     {
         using var reader = new PEReader([.. fileData]);
 
@@ -217,17 +214,20 @@ public static class PEViewer
                 ProcessImportTable(reader, descriptors);
             }
 
-            var delayImportSection = peHeader.DelayImportTableDirectory;
-
-            if (delayImportSection.Size > 0
-                && reader.PEHeaders.TryGetDirectoryOffset(delayImportSection, out var delayImportSectionAddress))
+            if (includeDelayed)
             {
-                Console.WriteLine();
-                Console.WriteLine("Delay Imported DLLs:");
+                var delayImportSection = peHeader.DelayImportTableDirectory;
 
-                var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
+                if (delayImportSection.Size > 0
+                    && reader.PEHeaders.TryGetDirectoryOffset(delayImportSection, out var delayImportSectionAddress))
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Delay Imported DLLs:");
 
-                ProcessDelayImportTable(reader, descriptors);
+                    var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
+
+                    ProcessDelayImportTable(reader, descriptors);
+                }
             }
 
             var exportSection = peHeader.ExportTableDirectory;
