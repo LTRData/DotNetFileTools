@@ -49,13 +49,9 @@ public static class Program
         string? wimPath = null;
         var wimIndex = 1;
         string[] files = [];
-        var showDependencies = false;
-        var showDependencyTree = false;
-        var includeDelayed = false;
         string? apiSetFile = null;
-        var showImports = false;
-        var showExports = false;
         var searchOption = SearchOption.TopDirectoryOnly;
+        var options = Options.None;
 
         var cmds = CommandLineParser.ParseCommandLine(args, StringComparer.Ordinal);
 
@@ -84,30 +80,35 @@ public static class Program
                 && cmds.ContainsKey("wim"))
             {
             }
+            else if (cmd.Key is "q" or "nohdr"
+                && cmd.Value.Length == 0)
+            {
+                options |= Options.SuppressHeaders;
+            }
             else if (cmd.Key is "d" or "dep" or "dependents"
                 && cmd.Value.Length == 0)
             {
-                showDependencies = true;
+                options |= Options.ShowDependencies;
             }
             else if (cmd.Key is "t" or "tree"
                 && cmd.Value.Length == 0)
             {
-                showDependencyTree = true;
+                options |= Options.ShowDependencyTree;
             }
             else if (cmd.Key is "z" or "delayed"
                 && cmd.Value.Length == 0)
             {
-                includeDelayed = true;
+                options |= Options.IncludeDelayedImports;
             }
             else if (cmd.Key is "i" or "imports"
                 && cmd.Value.Length == 0)
             {
-                showImports = true;
+                options |= Options.ShowImports;
             }
             else if (cmd.Key is "x" or "exports"
                 && cmd.Value.Length == 0)
             {
-                showExports = true;
+                options |= Options.ShowExports;
             }
             else if (cmd.Key == "apiset"
                 && cmd.Value.Length == 1)
@@ -152,6 +153,9 @@ Image files:
 Options:
     --recurse               Recurse into subdirectories.
     -r
+
+    --nohdr                 Do not display header information for ELF or PE files.
+    -q
 
     --dependents            Show direct DLL dependencies for specified files.
     --dep
@@ -270,14 +274,11 @@ Options:
                 Console.WriteLine();
                 Console.WriteLine(path);
 
-                if (showDependencies || showDependencyTree)
-                {
-                    PEViewer.ProcessDependencyTree(file, fileExistsFunc, readAllBytesFunc, path, includeDelayed, showDependencyTree);
-                }
-                else
-                {
-                    ProcessFile(file, includeDelayed, showImports, showExports);
-                }
+                ProcessFile(file,
+                            path,
+                            fileExistsFunc,
+                            readAllBytesFunc,
+                            options);
             }
             catch (Exception ex)
             {
@@ -291,10 +292,29 @@ Options:
         return errCode;
     }
 
-    public static void ProcessFile(Stream file, bool includeDelayed, bool showImports, bool showExports)
-        => ProcessFile(file.ReadToEnd(), includeDelayed, showImports, showExports);
+    public static void ProcessFile(Stream file,
+                                   string filePath,
+                                   Func<string, bool> fileExistsFunc,
+                                   Func<string, byte[]> readAllBytesFunc,
+                                   Options options)
+    {
+        if (file is FileStream { Name: { Length: > 0 } fileName })
+        {
+            filePath = fileName;
+        }
 
-    public static void ProcessFile(byte[] fileData, bool includeDelayed, bool showImports, bool showExports)
+        ProcessFile(file.ReadToEnd(),
+                    filePath,
+                    fileExistsFunc,
+                    readAllBytesFunc,
+                    options);
+    }
+
+    public static void ProcessFile(byte[] fileData,
+                                   string filePath,
+                                   Func<string, bool> fileExistsFunc,
+                                   Func<string, byte[]> readAllBytesFunc,
+                                   Options options)
     {
         fileData = DecompressData(fileData);
 
@@ -308,7 +328,7 @@ Options:
             Console.WriteLine();
             Console.WriteLine("ZIP archive detected, processing entries...");
 
-            ProcessZipFile(fileData, includeDelayed, showImports, showExports);
+            ProcessZipFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
         else if (fileData[0] == 0x37 && fileData[1] == 0x7a && fileData[2] == 0xbc && fileData[3] == 0xaf && fileData[4] == 0x27 && fileData[5] == 0x1c && fileData[6] == 0x00)
@@ -316,7 +336,7 @@ Options:
             Console.WriteLine();
             Console.WriteLine("7zip archive detected, processing entries...");
 
-            ProcessArchive(new SevenZipArchive(new MemoryStream(fileData)), includeDelayed, showImports, showExports);
+            ProcessArchive(new SevenZipArchive(new MemoryStream(fileData)), filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
         else if (fileData[0x100] == 0 && fileData.AsSpan(0x101, 5).SequenceEqual("ustar"u8))
@@ -324,7 +344,7 @@ Options:
             Console.WriteLine();
             Console.WriteLine("TAR archive detected, processing entries...");
 
-            ProcessTarFile(fileData, includeDelayed, showImports, showExports);
+            ProcessTarFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
         else if (fileData.AsSpan(0, 4).SequenceEqual("MSCF"u8) && fileData.AsSpan(4, 4).IsBufferZero())
@@ -332,17 +352,17 @@ Options:
             Console.WriteLine();
             Console.WriteLine("CAB archive detected, processing entries...");
 
-            ProcessArchive(new CabArchive(new MemoryStream(fileData)), includeDelayed, showImports, showExports);
+            ProcessArchive(new CabArchive(new MemoryStream(fileData)), filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
         else if (fileData.AsSpan(0, 2).SequenceEqual("MZ"u8))
         {
-            PEViewer.ProcessPEFile(fileData, includeDelayed, showImports, showExports);
+            PEViewer.ProcessPEFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
         else if (fileData[0] == 127 && fileData.AsSpan(1, 3).SequenceEqual("ELF"u8))
         {
-            ELFViewer.ProcessELFFile(fileData);
+            ELFViewer.ProcessELFFile(fileData, options);
             return;
         }
         else
@@ -351,8 +371,11 @@ Options:
             Console.WriteLine("Not a valid PE or ELF file.");
         }
 
-        Console.WriteLine("Initial file data:");
-        HexExtensions.WriteHex(Console.Out, fileData.Take(512));
+        if (!options.HasFlag(Options.SuppressHeaders))
+        {
+            Console.WriteLine("Initial file data:");
+            HexExtensions.WriteHex(Console.Out, fileData.Take(512));
+        }
     }
 
     internal static byte[] DecompressData(byte[] fileData)
@@ -575,7 +598,11 @@ Options:
         return result;
     }
 
-    private static void ProcessZipFile(byte[] fileData, bool includeDelayed, bool showImports, bool showExports)
+    private static void ProcessZipFile(byte[] fileData,
+                                       string filePath,
+                                       Func<string, bool> fileExistsFunc,
+                                       Func<string, byte[]> readAllBytesFunc,
+                                       Options options)
     {
         using var zip = new ZipArchive(new MemoryStream(fileData), ZipArchiveMode.Read, leaveOpen: false);
 
@@ -595,7 +622,11 @@ Options:
 
                 var entryData = entryStream.ReadExactly((int)entry.Length);
 
-                ProcessFile(entryData, includeDelayed, showImports, showExports);
+                ProcessFile(entryData,
+                            filePath,
+                            fileExistsFunc,
+                            readAllBytesFunc,
+                            options);
             }
             catch (Exception ex)
             {
@@ -606,7 +637,11 @@ Options:
         }
     }
 
-    private static void ProcessTarFile(byte[] fileData, bool includeDelayed, bool showImports, bool showExports)
+    private static void ProcessTarFile(byte[] fileData,
+                                       string filePath,
+                                       Func<string, bool> fileExistsFunc,
+                                       Func<string, byte[]> readAllBytesFunc,
+                                       Options options)
     {
         foreach (var entry in TarFile.EnumerateFiles(new MemoryStream(fileData)))
         {
@@ -629,7 +664,11 @@ Options:
 
                 var entryData = entryStream.ReadToEnd();
 
-                ProcessFile(entryData, includeDelayed, showImports, showExports);
+                ProcessFile(entryData,
+                            filePath,
+                            fileExistsFunc,
+                            readAllBytesFunc,
+                            options);
             }
             catch (Exception ex)
             {
@@ -640,7 +679,11 @@ Options:
         }
     }
 
-    private static void ProcessArchive(IArchive archive, bool includeDelayed, bool showImports, bool showExports)
+    private static void ProcessArchive(IArchive archive,
+                                       string filePath,
+                                       Func<string, bool> fileExistsFunc,
+                                       Func<string, byte[]> readAllBytesFunc,
+                                       Options options)
     {
         foreach (var entry in archive.FileEntries)
         {
@@ -669,7 +712,11 @@ Options:
                     entryData = entryStream.ReadToEnd();
                 }
 
-                ProcessFile(entryData, includeDelayed, showImports, showExports);
+                ProcessFile(entryData,
+                            filePath,
+                            fileExistsFunc,
+                            readAllBytesFunc,
+                            options);
             }
             catch (Exception ex)
             {
@@ -694,4 +741,16 @@ Options:
 
         return indentStr;
     }
+}
+
+[Flags]
+public enum Options
+{
+    None = 0x0000,
+    ShowDependencies = 0x0001,
+    ShowDependencyTree = 0x0002,
+    ShowImports = 0x0004,
+    IncludeDelayedImports = 0x0008,
+    ShowExports = 0x0010,
+    SuppressHeaders = 0x0020,
 }

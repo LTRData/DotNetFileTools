@@ -17,191 +17,206 @@ namespace peinfo;
 
 public static class PEViewer
 {
-    public static void ProcessPEFile(byte[] fileData, bool includeDelayed, bool showImports, bool showExports)
+    public static void ProcessPEFile(byte[] fileData,
+                                     string filePath,
+                                     Func<string, bool> fileExistsFunc,
+                                     Func<string, byte[]> readAllBytesFunc,
+                                     Options options)
     {
         using var reader = new PEReader([.. fileData]);
 
-        var coffHeader = reader.PEHeaders.CoffHeader;
+        if (!options.HasFlag(Options.SuppressHeaders))
+        {
+            var coffHeader = reader.PEHeaders.CoffHeader;
 
-        Console.WriteLine();
-        Console.WriteLine("MZ header:");
-        Console.WriteLine($"{"Machine",-24}{coffHeader.Machine}");
-        Console.WriteLine($"{"Characteristics",-24}{coffHeader.Characteristics}");
+            Console.WriteLine();
+            Console.WriteLine("MZ header:");
+            Console.WriteLine($"{"Machine",-24}{coffHeader.Machine}");
+            Console.WriteLine($"{"Characteristics",-24}{coffHeader.Characteristics}");
 
-        if (reader.PEHeaders.IsCoffOnly)
-        {
-            Console.WriteLine($"{"Type",-24}No executable sections");
-        }
-        else if (reader.PEHeaders.IsDll)
-        {
-            Console.WriteLine($"{"Type",-24}DLL");
-        }
-        else if (reader.PEHeaders.IsConsoleApplication)
-        {
-            Console.WriteLine($"{"Type",-24}Console application");
-        }
-        else if (reader.PEHeaders.IsExe)
-        {
-            Console.WriteLine($"{"Type",-24}Executable");
-        }
-
-        try
-        {
-            if (NativeFileVersion.TryGetVersion(fileData, out var fileVersion))
+            if (reader.PEHeaders.IsCoffOnly)
             {
-                Console.WriteLine();
-                Console.WriteLine("Version resource:");
+                Console.WriteLine($"{"Type",-24}No executable sections");
+            }
+            else if (reader.PEHeaders.IsDll)
+            {
+                Console.WriteLine($"{"Type",-24}DLL");
+            }
+            else if (reader.PEHeaders.IsConsoleApplication)
+            {
+                Console.WriteLine($"{"Type",-24}Console application");
+            }
+            else if (reader.PEHeaders.IsExe)
+            {
+                Console.WriteLine($"{"Type",-24}Executable");
+            }
 
-                Console.WriteLine($"{"File version",-24}{fileVersion.FileVersion}");
-                Console.WriteLine($"{"Product version",-24}{fileVersion.ProductVersion}");
-
-                if (fileVersion.FileDate is { } fileDate)
+            try
+            {
+                if (NativeFileVersion.TryGetVersion(fileData, out var fileVersion))
                 {
-                    Console.WriteLine($"{"File date",-24}{fileDate}");
-                }
+                    Console.WriteLine();
+                    Console.WriteLine("Version resource:");
 
-                foreach (var item in fileVersion.Fields)
-                {
-                    Console.WriteLine($"{item.Key,-24}{item.Value}");
+                    Console.WriteLine($"{"File version",-24}{fileVersion.FileVersion}");
+                    Console.WriteLine($"{"Product version",-24}{fileVersion.ProductVersion}");
+
+                    if (fileVersion.FileDate is { } fileDate)
+                    {
+                        Console.WriteLine($"{"File date",-24}{fileDate}");
+                    }
+
+                    foreach (var item in fileVersion.Fields)
+                    {
+                        Console.WriteLine($"{item.Key,-24}{item.Value}");
+                    }
                 }
             }
-        }
-        catch
-        {
-        }
+            catch
+            {
+            }
 
-        if (reader.PEHeaders.CorHeader is { } corHeader)
-        {
-            Console.WriteLine();
-            Console.WriteLine("COR header:");
+            if (reader.PEHeaders.CorHeader is { } corHeader)
+            {
+                Console.WriteLine();
+                Console.WriteLine("COR header:");
 
-            Console.WriteLine($"{"Flags",-24}{corHeader.Flags}");
-            Console.WriteLine($"{"Runtime version",-24}{corHeader.MajorRuntimeVersion}.{corHeader.MinorRuntimeVersion}");
+                Console.WriteLine($"{"Flags",-24}{corHeader.Flags}");
+                Console.WriteLine($"{"Runtime version",-24}{corHeader.MajorRuntimeVersion}.{corHeader.MinorRuntimeVersion}");
+            }
         }
 
         if (reader.PEHeaders.PEHeader is { } peHeader)
         {
-            Console.WriteLine();
-            Console.WriteLine("PE optional header:");
-            Console.WriteLine($"{"Subsystem",-24}{peHeader.Subsystem}");
-            Console.WriteLine($"{"Entry point",-24}0x{peHeader.AddressOfEntryPoint:x8}");
-            Console.WriteLine($"{"Image base",-24}0x{peHeader.ImageBase:x16}");
-            Console.WriteLine($"{"Size of image",-24}{peHeader.SizeOfImage:N0} bytes");
-            Console.WriteLine($"{"Size of headers",-24}{peHeader.SizeOfHeaders:N0} bytes");
-            Console.WriteLine($"{"Base of code",-24}0x{peHeader.BaseOfCode:x8}");
-            Console.WriteLine($"{"Base of data",-24}0x{peHeader.BaseOfData:x8}");
-            Console.WriteLine($"{"Characteristics",-24}{peHeader.DllCharacteristics}");
-            Console.WriteLine($"{"Linker version",-24}{peHeader.MajorLinkerVersion}.{peHeader.MinorLinkerVersion}");
-            Console.WriteLine($"{"OS version",-24}{peHeader.MajorOperatingSystemVersion}.{peHeader.MinorOperatingSystemVersion}");
-            Console.WriteLine($"{"Subsystem version",-24}{peHeader.MajorSubsystemVersion}.{peHeader.MinorSubsystemVersion}");
-
-            var securitySectionLocation = peHeader.CertificateTableDirectory;
-
-            if (securitySectionLocation.Size > 0)
+            if (!options.HasFlag(Options.SuppressHeaders))
             {
                 Console.WriteLine();
-                Console.WriteLine("Authenticode signature:");
+                Console.WriteLine("PE optional header:");
+                Console.WriteLine($"{"Subsystem",-24}{peHeader.Subsystem}");
+                Console.WriteLine($"{"Entry point",-24}0x{peHeader.AddressOfEntryPoint:x8}");
+                Console.WriteLine($"{"Image base",-24}0x{peHeader.ImageBase:x16}");
+                Console.WriteLine($"{"Size of image",-24}{peHeader.SizeOfImage:N0} bytes");
+                Console.WriteLine($"{"Size of headers",-24}{peHeader.SizeOfHeaders:N0} bytes");
+                Console.WriteLine($"{"Base of code",-24}0x{peHeader.BaseOfCode:x8}");
+                Console.WriteLine($"{"Base of data",-24}0x{peHeader.BaseOfData:x8}");
+                Console.WriteLine($"{"Characteristics",-24}{peHeader.DllCharacteristics}");
+                Console.WriteLine($"{"Linker version",-24}{peHeader.MajorLinkerVersion}.{peHeader.MinorLinkerVersion}");
+                Console.WriteLine($"{"OS version",-24}{peHeader.MajorOperatingSystemVersion}.{peHeader.MinorOperatingSystemVersion}");
+                Console.WriteLine($"{"Subsystem version",-24}{peHeader.MajorSubsystemVersion}.{peHeader.MinorSubsystemVersion}");
 
-                var securitySection = fileData.AsSpan(securitySectionLocation.RelativeVirtualAddress, securitySectionLocation.Size);
+                var securitySectionLocation = peHeader.CertificateTableDirectory;
 
-                var header = MemoryMarshal.Read<NativePE.WinCertificateHeader>(securitySection);
-
-                if (header.Revision == 0x200 && header.CertificateType == NativePE.CertificateType.PkcsSignedData)
+                if (securitySectionLocation.Size > 0)
                 {
-                    var blob = NativePE.GetCertificateBlob(securitySection);
+                    Console.WriteLine();
+                    Console.WriteLine("Authenticode signature:");
 
-                    var signed = new SignedCms();
+                    var securitySection = fileData.AsSpan(securitySectionLocation.RelativeVirtualAddress, securitySectionLocation.Size);
+
+                    var header = MemoryMarshal.Read<NativePE.WinCertificateHeader>(securitySection);
+
+                    if (header.Revision == 0x200 && header.CertificateType == NativePE.CertificateType.PkcsSignedData)
+                    {
+                        var blob = NativePE.GetCertificateBlob(securitySection);
+
+                        var signed = new SignedCms();
 
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-                    signed.Decode(blob);
+                        signed.Decode(blob);
 #else
                     signed.Decode(blob.ToArray());
 #endif
 
-                    for (; ; )
-                    {
-                        var signerInfo = signed.SignerInfos[0];
-
-                        if (signerInfo.Certificate is not { } cert)
+                        for (; ; )
                         {
-                            break;
-                        }
+                            var signerInfo = signed.SignerInfos[0];
 
-                        var certSubjectName = cert.Subject;
-
-                        Console.WriteLine($"{"Signed by",-24}{certSubjectName} ({cert.Thumbprint})");
-
-                        if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
-                            || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))
-                            || NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)))
-                        {
-                            Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine($"File signature is valid.");
-                            Console.ResetColor();
-                        }
-                        else
-                        {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine($"File signature is not valid. File contents modified after signing.");
-                            Console.ResetColor();
-                        }
-
-                        try
-                        {
-                            signed.CheckSignature(verifySignatureOnly: true);
-                            Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine($"Certificate signature valid.");
-                            Console.ResetColor();
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine($"Certificate signature error: {ex.JoinMessages()}");
-                            Console.ResetColor();
-                        }
-
-                        using var chain = new X509Chain();
-                        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.IgnoreCtlNotTimeValid | X509VerificationFlags.IgnoreNotTimeNested;
-
-                        if (chain.Build(cert))
-                        {
-                            Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine($"Certificate is valid.");
-                            Console.ResetColor();
-                        }
-                        else
-                        {
-                            foreach (var certChainStatus in chain.ChainStatus)
+                            if (signerInfo.Certificate is not { } cert)
                             {
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine($"Certificate validation error: {certChainStatus.Status}: {certChainStatus.StatusInformation}");
+                                break;
+                            }
+
+                            var certSubjectName = cert.Subject;
+
+                            Console.WriteLine($"{"Signed by",-24}{certSubjectName} ({cert.Thumbprint})");
+
+                            if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
+                                || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))
+                                || NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)))
+                            {
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"File signature is valid.");
                                 Console.ResetColor();
                             }
-                        }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"File signature is not valid. File contents modified after signing.");
+                                Console.ResetColor();
+                            }
 
-                        if (signerInfo.UnsignedAttributes
-                            .OfType<CryptographicAttributeObject>()
-                            .Where(o => o.Oid.Value!.StartsWith("1.3.6.1.4.1.311.2.4.", StringComparison.Ordinal))
-                            .SelectMany(o => o.Values.OfType<AsnEncodedData>())
-                            .Select(o => o.RawData)
-                            .FirstOrDefault() is not { } subData)
-                        {
-                            break;
-                        }
+                            try
+                            {
+                                signed.CheckSignature(verifySignatureOnly: true);
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"Certificate signature valid.");
+                                Console.ResetColor();
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"Certificate signature error: {ex.JoinMessages()}");
+                                Console.ResetColor();
+                            }
 
-                        signed.Decode(subData);
+                            using var chain = new X509Chain();
+                            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.IgnoreCtlNotTimeValid | X509VerificationFlags.IgnoreNotTimeNested;
+
+                            if (chain.Build(cert))
+                            {
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine($"Certificate is valid.");
+                                Console.ResetColor();
+                            }
+                            else
+                            {
+                                foreach (var certChainStatus in chain.ChainStatus)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"Certificate validation error: {certChainStatus.Status}: {certChainStatus.StatusInformation}");
+                                    Console.ResetColor();
+                                }
+                            }
+
+                            if (signerInfo.UnsignedAttributes
+                                .OfType<CryptographicAttributeObject>()
+                                .Where(o => o.Oid.Value!.StartsWith("1.3.6.1.4.1.311.2.4.", StringComparison.Ordinal))
+                                .SelectMany(o => o.Values.OfType<AsnEncodedData>())
+                                .Select(o => o.RawData)
+                                .FirstOrDefault() is not { } subData)
+                            {
+                                break;
+                            }
+
+                            signed.Decode(subData);
+                        }
                     }
-                }
-                else
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"Unsupported authenticode signature");
-                    Console.ResetColor();
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"Unsupported authenticode signature");
+                        Console.ResetColor();
+                    }
                 }
             }
 
-            if (showImports)
+            if ((options & (Options.ShowDependencies | Options.ShowDependencyTree)) != 0)
+            {
+                ProcessDependencyTree(fileData, fileExistsFunc, readAllBytesFunc, filePath, options);
+            }
+
+            if (options.HasFlag(Options.ShowImports))
             {
                 var importSection = peHeader.ImportTableDirectory;
 
@@ -215,34 +230,34 @@ public static class PEViewer
 
                     ProcessImportTable(reader, descriptors);
                 }
-            }
 
-            if (includeDelayed)
-            {
-                var delayImportSection = peHeader.DelayImportTableDirectory;
-
-                if (delayImportSection.Size > 0
-                    && reader.PEHeaders.TryGetDirectoryOffset(delayImportSection, out var delayImportSectionAddress))
+                if (options.HasFlag(Options.IncludeDelayedImports))
                 {
-                    Console.WriteLine();
-                    Console.WriteLine("Delay Imported DLLs:");
+                    var delayImportSection = peHeader.DelayImportTableDirectory;
 
-                    var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
+                    if (delayImportSection.Size > 0
+                        && reader.PEHeaders.TryGetDirectoryOffset(delayImportSection, out var delayImportSectionAddress))
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("Delay Imported DLLs:");
 
-                    ProcessDelayImportTable(reader, descriptors);
+                        var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
+
+                        ProcessDelayImportTable(reader, descriptors);
+                    }
                 }
             }
 
-            if (showExports || !showImports)
-            { 
+            if ((options & (Options.ShowExports | Options.ShowImports)) != 0)
+            {
                 var exportSection = peHeader.ExportTableDirectory;
 
                 if (exportSection.Size > 0
                     && reader.PEHeaders.TryGetDirectoryOffset(exportSection, out var exportSectionAddress))
                 {
                     Console.WriteLine();
-                    
-                    if (showExports)
+
+                    if (options.HasFlag(Options.ShowExports))
                     {
                         Console.WriteLine("Exported functions:");
                     }
@@ -284,7 +299,7 @@ public static class PEViewer
 
                                 if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
                                 {
-                                    forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
+                                    forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString.Substring(delimiter + 1)}";
                                 }
 
                                 Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, Forwarded to: {forwarderString})  {name}");
@@ -292,7 +307,7 @@ public static class PEViewer
                                 continue;
                             }
 
-                            if (showExports)
+                            if (options.HasFlag(Options.ShowExports))
                             {
                                 Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, RVA: 0x{functionRVA:X8})  {name}");
                             }
@@ -318,7 +333,7 @@ public static class PEViewer
 
                                 if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
                                 {
-                                    forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
+                                    forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString.Substring(delimiter + 1)}";
                                 }
 
                                 Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, Forwarded to: {forwarderString})");
@@ -326,7 +341,7 @@ public static class PEViewer
                                 continue;
                             }
 
-                            if (showExports)
+                            if (options.HasFlag(Options.ShowExports))
                             {
                                 Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, RVA: 0x{functionRVA:X8})");
                             }
@@ -372,9 +387,8 @@ public static class PEViewer
 
             if (ApiSetResolver.Default.TryLookupApiSet(moduleName, out var apiSetTarget))
             {
-                Console.Write(" (");
+                Console.Write(" -> ");
                 Console.Write(apiSetTarget);
-                Console.Write(')');
             }
 
             Console.WriteLine();
@@ -469,9 +483,8 @@ public static class PEViewer
 
             if (ApiSetResolver.Default.TryLookupApiSet(moduleName, out var apiSetTarget))
             {
-                Console.Write(" (");
+                Console.Write(" -> ");
                 Console.Write(apiSetTarget);
-                Console.Write(')');
             }
 
             Console.WriteLine();
@@ -543,20 +556,12 @@ public static class PEViewer
         }
     }
 
-    public static void ProcessDependencyTree(Stream file,
+    public static void ProcessDependencyTree(byte[] fileData,
                                              Func<string, bool> fileExistsFunc,
                                              Func<string, byte[]> readAllBytesFunc,
                                              string filePath,
-                                             bool includeDelayed,
-                                             bool showDependencyTree)
+                                             Options options)
     {
-        if (file is FileStream { Name: { Length: > 0 } fileName })
-        {
-            filePath = fileName;
-        }
-
-        var fileData = Program.DecompressData(file.ReadToEnd());
-
         if (!fileData.AsSpan(0, 2).SequenceEqual("MZ"u8))
         {
             throw new NotSupportedException("Not a valid PE file");
@@ -564,7 +569,9 @@ public static class PEViewer
 
         var headers = NativePE.GetImageNtHeaders(fileData);
 
-        if (showDependencyTree)
+        Console.WriteLine();
+
+        if (options.HasFlag(Options.ShowDependencyTree))
         {
             Console.WriteLine("Dependency Tree:");
         }
@@ -624,7 +631,7 @@ public static class PEViewer
                               lastFoundPathIndices: [],
                               indent: 2,
                               isDelayedTree: false,
-                              includeDelayed: includeDelayed, showDependencyTree: showDependencyTree);
+                              options);
     }
 
     private static Exports ProcessDependencyTree(byte[] fileData,
@@ -635,8 +642,7 @@ public static class PEViewer
                                                  List<int> lastFoundPathIndices,
                                                  int indent,
                                                  bool isDelayedTree,
-                                                 bool includeDelayed,
-                                                 bool showDependencyTree)
+                                                 Options options)
     {
         var ownExports = GetExports(fileData);
 
@@ -646,9 +652,9 @@ public static class PEViewer
 
         modules[ownModuleNameWithoutExtension] = ownExportsRecord;
 
-        foreach (var (moduleNameImport, functions, delayedImport) in EnumerateDependencies(fileData, includeDelayed))
+        foreach (var (moduleNameImport, functions, delayedImport) in EnumerateDependencies(fileData, options.HasFlag(Options.IncludeDelayedImports)))
         {
-            if (!includeDelayed && delayedImport)
+            if (!options.HasFlag(Options.IncludeDelayedImports) && delayedImport)
             {
                 continue;
             }
@@ -677,8 +683,7 @@ public static class PEViewer
                                       pathIndex: i,
                                       indent: indent,
                                       isDelayedTree: delayed,
-                                      includeDelayed: includeDelayed,
-                                      showDependencyTree: showDependencyTree,
+                                      options: options,
                                       expectedMachine: machine);
 
                     if (exports is not null)
@@ -791,8 +796,7 @@ public static class PEViewer
                                     int pathIndex,
                                     int indent,
                                     bool isDelayedTree,
-                                    bool includeDelayed,
-                                    bool showDependencyTree,
+                                    Options options,
                                     ImageFileMachine expectedMachine)
     {
         var tryPath = Path.Combine(paths[pathIndex].Path, moduleName);
@@ -851,7 +855,7 @@ public static class PEViewer
             Console.WriteLine($"{chars}{tryPath}");
             Console.ResetColor();
 
-            if (showDependencyTree)
+            if (options.HasFlag(Options.ShowDependencyTree))
             {
                 var exportsRecord = ProcessDependencyTree(fileData,
                                                           tryPath,
@@ -861,8 +865,7 @@ public static class PEViewer
                                                           [pathIndex],
                                                           indent + 2,
                                                           isDelayedTree,
-                                                          includeDelayed,
-                                                          showDependencyTree: true);
+                                                          options);
 
                 return exportsRecord;
             }
@@ -1037,7 +1040,7 @@ public static class PEViewer
             var moduleName = reader.GetSectionData((int)exportDir.Name).AsSpan().ReadNullTerminatedAsciiString();
 
             List<(string forwarderModuleName, (ulong Ordinal, ushort Hint, string? Name) function)>? forwarders = null;
-            
+
             if (exportDir.NumberOfNames != 0)
             {
                 var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
@@ -1051,7 +1054,7 @@ public static class PEViewer
                     var functionRVA = functionPointers[ordinal];
 
                     var forwarder = ParseForwarder(reader, exportSection, functionRVA);
-                    
+
                     if (forwarder.HasValue)
                     {
                         forwarders ??= new(1);
@@ -1213,7 +1216,7 @@ public static class PEViewer
         if (functionName[0] == '#')
         {
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-                        if (!ulong.TryParse(functionName.AsSpan(1), out var ordinalValue))
+            if (!ulong.TryParse(functionName.AsSpan(1), out var ordinalValue))
 #else
             if (!ulong.TryParse(functionName.Substring(1), out var ordinalValue))
 #endif
@@ -1248,7 +1251,7 @@ public static class PEViewer
     private const uint IMAGE_ORDINAL_FLAG32 = 0x80000000;
 }
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly struct ImageImportDescriptor
 {
     public readonly uint OriginalFirstThunk;
@@ -1258,7 +1261,7 @@ public readonly struct ImageImportDescriptor
     public readonly uint FirstThunk;
 }
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly struct ImageDelayImportDescriptor
 {
     public readonly uint Attributes;           // 0 = absolute virtual addresses, 1 = relative virtual addresses
@@ -1271,7 +1274,7 @@ public readonly struct ImageDelayImportDescriptor
     public readonly uint TimeStamp;            // The timestamp of the DLL to which this image has been bound.
 }
 
-[StructLayout(LayoutKind.Sequential)]
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
 public readonly struct ImageExportDirectory
 {
     public readonly uint Characteristics;
