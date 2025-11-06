@@ -564,7 +564,14 @@ public static class PEViewer
 
         var headers = NativePE.GetImageNtHeaders(fileData);
 
-        Console.WriteLine("Dependency Tree:");
+        if (showDependencyTree)
+        {
+            Console.WriteLine("Dependency Tree:");
+        }
+        else
+        {
+            Console.WriteLine("Dependencies:");
+        }
 
         var pathsEnum = Environment.GetEnvironmentVariable("PATH")
             .AsMemory()
