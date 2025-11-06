@@ -17,7 +17,7 @@ namespace peinfo;
 
 public static class PEViewer
 {
-    public static void ProcessPEFile(byte[] fileData, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
+    public static void ProcessPEFile(byte[] fileData, bool includeDelayed, bool showImports, bool showExports)
     {
         using var reader = new PEReader([.. fileData]);
 
@@ -201,17 +201,20 @@ public static class PEViewer
                 }
             }
 
-            var importSection = peHeader.ImportTableDirectory;
-
-            if (importSection.Size > 0
-                && reader.PEHeaders.TryGetDirectoryOffset(importSection, out var importSectionAddress))
+            if (showImports)
             {
-                Console.WriteLine();
-                Console.WriteLine("Imported DLLs:");
+                var importSection = peHeader.ImportTableDirectory;
 
-                var descriptors = MemoryMarshal.Cast<byte, ImageImportDescriptor>(fileData.AsSpan(importSectionAddress, importSection.Size));
+                if (importSection.Size > 0
+                    && reader.PEHeaders.TryGetDirectoryOffset(importSection, out var importSectionAddress))
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Imported DLLs:");
 
-                ProcessImportTable(reader, descriptors);
+                    var descriptors = MemoryMarshal.Cast<byte, ImageImportDescriptor>(fileData.AsSpan(importSectionAddress, importSection.Size));
+
+                    ProcessImportTable(reader, descriptors);
+                }
             }
 
             if (includeDelayed)
@@ -230,87 +233,104 @@ public static class PEViewer
                 }
             }
 
-            var exportSection = peHeader.ExportTableDirectory;
+            if (showExports || !showImports)
+            { 
+                var exportSection = peHeader.ExportTableDirectory;
 
-            if (exportSection.Size > 0
-                && reader.PEHeaders.TryGetDirectoryOffset(exportSection, out var exportSectionAddress))
-            {
-                Console.WriteLine();
-                Console.WriteLine("Exported functions:");
-
-                var exportDir = MemoryMarshal.Read<ImageExportDirectory>(fileData.AsSpan(exportSectionAddress, exportSection.Size));
-
-                var moduleName = reader.GetSectionData((int)exportDir.Name).AsSpan().ReadNullTerminatedAsciiString();
-
-                Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.Write("  ");
-                Console.WriteLine(moduleName);
-                Console.ResetColor();
-
-                if (exportDir.NumberOfNames != 0)
+                if (exportSection.Size > 0
+                    && reader.PEHeaders.TryGetDirectoryOffset(exportSection, out var exportSectionAddress))
                 {
-                    var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                    var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                    var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
-
-                    for (var i = 0; i < exportDir.NumberOfNames; i++)
+                    Console.WriteLine();
+                    
+                    if (showExports)
                     {
-                        var nameRVA = namePointers[i];
-                        var name = reader.GetSectionData((int)nameRVA).AsSpan().ReadNullTerminatedAsciiString();
-                        var ordinal = ordinalPointers[i];
-                        var functionRVA = functionPointers[ordinal];
-
-                        if (functionRVA >= exportSection.RelativeVirtualAddress && functionRVA < exportSection.RelativeVirtualAddress + exportSection.Size)
-                        {
-                            // Forwarder
-                            var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
-
-                            var delimiter = forwarderString.LastIndexOf('.');
-
-                            var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
-
-                            if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
-                            {
-                                forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
-                            }
-
-                            Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, Forwarded to: {forwarderString})  {name}");
-
-                            continue;
-                        }
-
-                        Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, RVA: 0x{functionRVA:X8})  {name}");
+                        Console.WriteLine("Exported functions:");
                     }
-                }
-
-                if (exportDir.NumberOfFunctions != 0)
-                {
-                    var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
-
-                    for (var i = 0; i < exportDir.NumberOfFunctions; i++)
+                    else
                     {
-                        var functionRVA = functionPointers[i];
+                        Console.WriteLine("Forwarded functions:");
+                    }
 
-                        if (functionRVA >= exportSection.RelativeVirtualAddress && functionRVA < exportSection.RelativeVirtualAddress + exportSection.Size)
+                    var exportDir = MemoryMarshal.Read<ImageExportDirectory>(fileData.AsSpan(exportSectionAddress, exportSection.Size));
+
+                    var moduleName = reader.GetSectionData((int)exportDir.Name).AsSpan().ReadNullTerminatedAsciiString();
+
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.Write("  ");
+                    Console.WriteLine(moduleName);
+                    Console.ResetColor();
+
+                    if (exportDir.NumberOfNames != 0)
+                    {
+                        var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
+                        var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan()).Slice(0, exportDir.NumberOfNames);
+                        var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+
+                        for (var i = 0; i < exportDir.NumberOfNames; i++)
                         {
-                            // Forwarder
-                            var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
+                            var nameRVA = namePointers[i];
+                            var name = reader.GetSectionData((int)nameRVA).AsSpan().ReadNullTerminatedAsciiString();
+                            var ordinal = ordinalPointers[i];
+                            var functionRVA = functionPointers[ordinal];
 
-                            var delimiter = forwarderString.LastIndexOf('.');
-
-                            var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
-
-                            if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
+                            if (functionRVA >= exportSection.RelativeVirtualAddress && functionRVA < exportSection.RelativeVirtualAddress + exportSection.Size)
                             {
-                                forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
+                                // Forwarder
+                                var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
+
+                                var delimiter = forwarderString.LastIndexOf('.');
+
+                                var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
+
+                                if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
+                                {
+                                    forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
+                                }
+
+                                Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, Forwarded to: {forwarderString})  {name}");
+
+                                continue;
                             }
 
-                            Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, Forwarded to: {forwarderString})");
-
-                            continue;
+                            if (showExports)
+                            {
+                                Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, RVA: 0x{functionRVA:X8})  {name}");
+                            }
                         }
+                    }
 
-                        Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, RVA: 0x{functionRVA:X8})");
+                    if (exportDir.NumberOfFunctions != 0)
+                    {
+                        var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+
+                        for (var i = 0; i < exportDir.NumberOfFunctions; i++)
+                        {
+                            var functionRVA = functionPointers[i];
+
+                            if (functionRVA >= exportSection.RelativeVirtualAddress && functionRVA < exportSection.RelativeVirtualAddress + exportSection.Size)
+                            {
+                                // Forwarder
+                                var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
+
+                                var delimiter = forwarderString.LastIndexOf('.');
+
+                                var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
+
+                                if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
+                                {
+                                    forwarderString = $"{module}[{apiSetTarget}].{forwarderString.Substring(delimiter + 1)}";
+                                }
+
+                                Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, Forwarded to: {forwarderString})");
+
+                                continue;
+                            }
+
+                            if (showExports)
+                            {
+                                Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, RVA: 0x{functionRVA:X8})");
+                            }
+                        }
                     }
                 }
             }
@@ -527,7 +547,8 @@ public static class PEViewer
                                              Func<string, bool> fileExistsFunc,
                                              Func<string, byte[]> readAllBytesFunc,
                                              string filePath,
-                                             bool includeDelayed)
+                                             bool includeDelayed,
+                                             bool showDependencyTree)
     {
         if (file is FileStream { Name: { Length: > 0 } fileName })
         {
@@ -591,7 +612,7 @@ public static class PEViewer
                               lastFoundPathIndices: [],
                               indent: 2,
                               isDelayedTree: false,
-                              includeDelayed: includeDelayed);
+                              includeDelayed: includeDelayed, showDependencyTree: showDependencyTree);
     }
 
     private static Exports ProcessDependencyTree(byte[] fileData,
@@ -602,7 +623,8 @@ public static class PEViewer
                                                  List<int> lastFoundPathIndices,
                                                  int indent,
                                                  bool isDelayedTree,
-                                                 bool includeDelayed)
+                                                 bool includeDelayed,
+                                                 bool showDependencyTree)
     {
         var ownExports = GetExports(fileData);
 
@@ -637,7 +659,15 @@ public static class PEViewer
             {
                 foreach (var i in lastFoundPathIndices.Concat(Enumerable.Range(0, paths.Count).Except(lastFoundPathIndices)))
                 {
-                    exports = TryPath(moduleName, modules, paths, i, indent, delayed, includeDelayed, machine);
+                    exports = TryPath(moduleName: moduleName,
+                                      modules: modules,
+                                      paths: paths,
+                                      pathIndex: i,
+                                      indent: indent,
+                                      isDelayedTree: delayed,
+                                      includeDelayed: includeDelayed,
+                                      showDependencyTree: showDependencyTree,
+                                      expectedMachine: machine);
 
                     if (exports is not null)
                     {
@@ -749,7 +779,9 @@ public static class PEViewer
                                     int pathIndex,
                                     int indent,
                                     bool isDelayedTree,
-                                    bool includeDelayed, ImageFileMachine expectedMachine)
+                                    bool includeDelayed,
+                                    bool showDependencyTree,
+                                    ImageFileMachine expectedMachine)
     {
         var tryPath = Path.Combine(paths[pathIndex].Path, moduleName);
 
@@ -807,17 +839,29 @@ public static class PEViewer
             Console.WriteLine($"{chars}{tryPath}");
             Console.ResetColor();
 
-            var exportsRecord = ProcessDependencyTree(fileData,
-                                                      tryPath,
-                                                      expectedMachine,
-                                                      modules,
-                                                      paths,
-                                                      [pathIndex],
-                                                      indent + 2,
-                                                      isDelayedTree,
-                                                      includeDelayed);
+            if (showDependencyTree)
+            {
+                var exportsRecord = ProcessDependencyTree(fileData,
+                                                          tryPath,
+                                                          expectedMachine,
+                                                          modules,
+                                                          paths,
+                                                          [pathIndex],
+                                                          indent + 2,
+                                                          isDelayedTree,
+                                                          includeDelayed,
+                                                          showDependencyTree: true);
 
-            return exportsRecord;
+                return exportsRecord;
+            }
+            else
+            {
+                var exports = GetExports(fileData);
+
+                var exportsRecord = new Exports(tryPath, exports);
+
+                return exportsRecord;
+            }
         }
         catch (Exception ex)
         {

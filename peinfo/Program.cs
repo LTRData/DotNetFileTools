@@ -92,7 +92,7 @@ public static class Program
             else if (cmd.Key is "t" or "tree"
                 && cmd.Value.Length == 0)
             {
-                showDependencies = true;
+                showDependencyTree = true;
             }
             else if (cmd.Key is "z" or "delayed"
                 && cmd.Value.Length == 0)
@@ -270,13 +270,13 @@ Options:
                 Console.WriteLine();
                 Console.WriteLine(path);
 
-                if (showDependencyTree)
+                if (showDependencies || showDependencyTree)
                 {
-                    PEViewer.ProcessDependencyTree(file, fileExistsFunc, readAllBytesFunc, path, includeDelayed);
+                    PEViewer.ProcessDependencyTree(file, fileExistsFunc, readAllBytesFunc, path, includeDelayed, showDependencyTree);
                 }
                 else
                 {
-                    ProcessFile(file, includeDelayed, showDependencies, showImports, showExports);
+                    ProcessFile(file, includeDelayed, showImports, showExports);
                 }
             }
             catch (Exception ex)
@@ -291,10 +291,10 @@ Options:
         return errCode;
     }
 
-    public static void ProcessFile(Stream file, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
-        => ProcessFile(file.ReadToEnd(), includeDelayed, showDependencies, showImports, showExports);
+    public static void ProcessFile(Stream file, bool includeDelayed, bool showImports, bool showExports)
+        => ProcessFile(file.ReadToEnd(), includeDelayed, showImports, showExports);
 
-    public static void ProcessFile(byte[] fileData, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
+    public static void ProcessFile(byte[] fileData, bool includeDelayed, bool showImports, bool showExports)
     {
         fileData = DecompressData(fileData);
 
@@ -308,15 +308,7 @@ Options:
             Console.WriteLine();
             Console.WriteLine("ZIP archive detected, processing entries...");
 
-            ProcessZipFile(fileData, includeDelayed, showDependencies, showImports, showExports);
-            return;
-        }
-        else if (fileData[0] == 0xfd && fileData.AsSpan(1, 4).SequenceEqual("7zXZ"u8))
-        {
-            Console.WriteLine();
-            Console.WriteLine("XZ archive detected, processing entries...");
-
-            ProcessArchive(new XzArchive(new MemoryStream(fileData)), includeDelayed, showDependencies, showImports, showExports);
+            ProcessZipFile(fileData, includeDelayed, showImports, showExports);
             return;
         }
         else if (fileData[0] == 0x37 && fileData[1] == 0x7a && fileData[2] == 0xbc && fileData[3] == 0xaf && fileData[4] == 0x27 && fileData[5] == 0x1c && fileData[6] == 0x00)
@@ -324,7 +316,7 @@ Options:
             Console.WriteLine();
             Console.WriteLine("7zip archive detected, processing entries...");
 
-            ProcessArchive(new SevenZipArchive(new MemoryStream(fileData)), includeDelayed, showDependencies, showImports, showExports);
+            ProcessArchive(new SevenZipArchive(new MemoryStream(fileData)), includeDelayed, showImports, showExports);
             return;
         }
         else if (fileData[0x100] == 0 && fileData.AsSpan(0x101, 5).SequenceEqual("ustar"u8))
@@ -332,7 +324,7 @@ Options:
             Console.WriteLine();
             Console.WriteLine("TAR archive detected, processing entries...");
 
-            ProcessTarFile(fileData, includeDelayed, showDependencies, showImports, showExports);
+            ProcessTarFile(fileData, includeDelayed, showImports, showExports);
             return;
         }
         else if (fileData.AsSpan(0, 4).SequenceEqual("MSCF"u8) && fileData.AsSpan(4, 4).IsBufferZero())
@@ -340,12 +332,12 @@ Options:
             Console.WriteLine();
             Console.WriteLine("CAB archive detected, processing entries...");
 
-            ProcessArchive(new CabArchive(new MemoryStream(fileData)), includeDelayed, showDependencies, showImports, showExports);
+            ProcessArchive(new CabArchive(new MemoryStream(fileData)), includeDelayed, showImports, showExports);
             return;
         }
         else if (fileData.AsSpan(0, 2).SequenceEqual("MZ"u8))
         {
-            PEViewer.ProcessPEFile(fileData, includeDelayed, showDependencies, showImports, showExports);
+            PEViewer.ProcessPEFile(fileData, includeDelayed, showImports, showExports);
             return;
         }
         else if (fileData[0] == 127 && fileData.AsSpan(1, 3).SequenceEqual("ELF"u8))
@@ -424,6 +416,19 @@ Options:
                 using var decompr = new BZip2DecoderStream(new MemoryStream(fileData), Ownership.Dispose);
                 fileData = decompr.ReadToEnd();
 
+                continue;
+            }
+
+            if (fileData[0] == 0xfd && fileData.AsSpan(1, 4).SequenceEqual("7zXZ"u8))
+            {
+                Console.WriteLine();
+                Console.WriteLine("XZ compressed file detected, decompressing...");
+
+                using var xz = new XzArchive(new MemoryStream(fileData));
+                var buffer = new byte[((IArchive)xz).FileEntries.First().Length!.Value];
+                using var decompr = new MemoryStream(buffer);
+                xz.Extract(decompr);
+                
                 continue;
             }
 
@@ -570,7 +575,7 @@ Options:
         return result;
     }
 
-    private static void ProcessZipFile(byte[] fileData, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
+    private static void ProcessZipFile(byte[] fileData, bool includeDelayed, bool showImports, bool showExports)
     {
         using var zip = new ZipArchive(new MemoryStream(fileData), ZipArchiveMode.Read, leaveOpen: false);
 
@@ -590,7 +595,7 @@ Options:
 
                 var entryData = entryStream.ReadExactly((int)entry.Length);
 
-                ProcessFile(entryData, includeDelayed, showDependencies, showImports, showExports);
+                ProcessFile(entryData, includeDelayed, showImports, showExports);
             }
             catch (Exception ex)
             {
@@ -601,7 +606,7 @@ Options:
         }
     }
 
-    private static void ProcessTarFile(byte[] fileData, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
+    private static void ProcessTarFile(byte[] fileData, bool includeDelayed, bool showImports, bool showExports)
     {
         foreach (var entry in TarFile.EnumerateFiles(new MemoryStream(fileData)))
         {
@@ -624,7 +629,7 @@ Options:
 
                 var entryData = entryStream.ReadToEnd();
 
-                ProcessFile(entryData, includeDelayed, showDependencies, showImports, showExports);
+                ProcessFile(entryData, includeDelayed, showImports, showExports);
             }
             catch (Exception ex)
             {
@@ -635,7 +640,7 @@ Options:
         }
     }
 
-    private static void ProcessArchive(IArchive archive, bool includeDelayed, bool showDependencies, bool showImports, bool showExports)
+    private static void ProcessArchive(IArchive archive, bool includeDelayed, bool showImports, bool showExports)
     {
         foreach (var entry in archive.FileEntries)
         {
@@ -664,7 +669,7 @@ Options:
                     entryData = entryStream.ReadToEnd();
                 }
 
-                ProcessFile(entryData, includeDelayed, showDependencies, showImports, showExports);
+                ProcessFile(entryData, includeDelayed, showImports, showExports);
             }
             catch (Exception ex)
             {
