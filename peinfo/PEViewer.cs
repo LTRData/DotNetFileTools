@@ -872,6 +872,10 @@ public static class PEViewer
 
                 var exportsRecord = new Exports(tryPath, exports);
 
+                var ownModuleNameWithoutExtension = Path.GetFileNameWithoutExtension(tryPath);
+
+                modules[ownModuleNameWithoutExtension] = exportsRecord;
+
                 return exportsRecord;
             }
         }
