@@ -11,19 +11,11 @@ namespace peinfo;
 
 public static class ELFViewer
 {
-    public static void ProcessELFFile(ReadOnlySpan<byte> fileData, Options options)
+    public static void ProcessELFFile(ReadOnlyMemory<byte> fileData, Options options)
     {
-        var elf = MemoryMarshal.Read<ElfHeader>(fileData);
+        var reader = new ElfReader(fileData);
 
-        if (!elf.IsValid)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine();
-            Console.WriteLine("Invalid ELF file.");
-            Console.ResetColor();
-
-            return;
-        }
+        var elf = reader.Header;
 
         if (!options.HasFlag(Options.SuppressHeaders))
         {
@@ -39,102 +31,37 @@ public static class ELFViewer
             Console.WriteLine($"{"Type",-35}{elf.Type} (0x{(ushort)elf.Type:x4})");
             Console.WriteLine($"{"Machine",-35}{elf.Machine} (0x{(ushort)elf.Machine:x4})");
             Console.WriteLine($"{"Version",-35}{elf.Version} (0x{(uint)elf.Version:x8})");
-        }
 
-        ElfHeaderEnd end;
-
-        if (elf.Is64)
-        {
-            var elfHeader64 = MemoryMarshal.Read<ElfHeader64>(fileData);
-            
-            end = elfHeader64.End;
-
-            if (!options.HasFlag(Options.SuppressHeaders))
+            if (elf.Is64)
             {
                 Console.WriteLine();
-                Console.WriteLine($"{"Entry point",-35}0x{end.EntryPoint:x16}");
-                Console.WriteLine($"{"Program header offset",-35}0x{end.ProgramHeaderOffset:x16}");
-                Console.WriteLine($"{"Section header offset",-35}0x{end.SectionHeaderOffset:x16}");
+                Console.WriteLine($"{"Entry point",-35}0x{elf.EntryPoint:x16}");
+                Console.WriteLine($"{"Program header offset",-35}0x{elf.ProgramHeaderOffset:x16}");
+                Console.WriteLine($"{"Section header offset",-35}0x{elf.SectionHeaderOffset:x16}");
             }
-        }
-        else
-        {
-            var elfHeader32 = MemoryMarshal.Read<ElfHeader32>(fileData);
-
-            end = elfHeader32.End;
-
-            if (!options.HasFlag(Options.SuppressHeaders))
+            else
             {
                 Console.WriteLine();
-                Console.WriteLine($"{"Entry point",-35}0x{end.EntryPoint:x8}");
-                Console.WriteLine($"{"Program header offset",-35}0x{end.ProgramHeaderOffset:x8}");
-                Console.WriteLine($"{"Section header offset",-35}0x{end.SectionHeaderOffset:x8}");
+                Console.WriteLine($"{"Entry point",-35}0x{elf.EntryPoint:x8}");
+                Console.WriteLine($"{"Program header offset",-35}0x{elf.ProgramHeaderOffset:x8}");
+                Console.WriteLine($"{"Section header offset",-35}0x{elf.SectionHeaderOffset:x8}");
             }
-        }
 
-        if (!options.HasFlag(Options.SuppressHeaders))
-        {
             Console.WriteLine();
-            Console.WriteLine($"{"Machine flags",-35}{end.Flags} (0x{(uint)end.Flags:x8})");
-            Console.WriteLine($"{"ELF header size",-35}{end.HeaderSize:N0} bytes");
-            Console.WriteLine($"{"Program header entry size",-35}{end.ProgramHeaderEntrySize:N0} bytes");
-            Console.WriteLine($"{"Number of program header entries",-35}{end.ProgramHeaderEntryCount:N0}");
-            Console.WriteLine($"{"Section header entry size",-35}{end.SectionHeaderEntrySize:N0} bytes");
-            Console.WriteLine($"{"Number of section header entries",-35}{end.SectionHeaderEntryCount:N0}");
-            Console.WriteLine($"{"Section header string table index",-35}{end.SectionHeaderStringTableIndex}");
+            Console.WriteLine($"{"Machine flags",-35}{elf.Flags} (0x{(uint)elf.Flags:x8})");
+            Console.WriteLine($"{"ELF header size",-35}{elf.HeaderSize:N0} bytes");
+            Console.WriteLine($"{"Program header entry size",-35}{elf.ProgramHeaderEntrySize:N0} bytes");
+            Console.WriteLine($"{"Number of program header entries",-35}{elf.ProgramHeaderEntryCount:N0}");
+            Console.WriteLine($"{"Section header entry size",-35}{elf.SectionHeaderEntrySize:N0} bytes");
+            Console.WriteLine($"{"Number of section header entries",-35}{elf.SectionHeaderEntryCount:N0}");
+            Console.WriteLine($"{"Section header string table index",-35}{elf.SectionHeaderStringTableIndex}");
         }
 
         if ((options & (Options.ShowDependencies | Options.ShowDependencyTree | Options.ShowImports | Options.IncludeDelayedImports | Options.ShowExports)) != 0)
         {
-            ElfProgramHeader? dynamic = null;
-
-            var programHeaders = new List<ElfProgramHeader>(end.ProgramHeaderEntryCount);
-
-            static long VaToFile(ulong va, List<ElfProgramHeader> phs)
+            if (reader.DynamicHeader is { } dynHeader)
             {
-                foreach (var ph in phs)
-                {
-                    ulong start = ph.Vaddr, end = ph.Vaddr + ph.Memsz;
-
-                    if (va >= start && va < end)
-                    {
-                        return (long)(ph.Offset + (va - ph.Vaddr));
-                    }
-                }
-
-                return -1;
-            }
-
-            for (ushort i = 0; i < end.ProgramHeaderEntryCount; i++)
-            {
-                var entryData = fileData.Slice((int)end.ProgramHeaderOffset + i * end.ProgramHeaderEntrySize, end.ProgramHeaderEntrySize);
-
-                ElfProgramHeader programHeader;
-
-                if (elf.Is64)
-                {
-                    var header = MemoryMarshal.Read<ElfProgramHeader64>(entryData);
-                    programHeader = header.Parse(elf.IsLittleEndian);
-                }
-                else
-                {
-                    var header = MemoryMarshal.Read<ElfProgramHeader32>(entryData);
-                    programHeader = header.Parse(elf.IsLittleEndian);
-                }
-
-                programHeaders.Add(programHeader);
-
-                const int PT_DYNAMIC = 2;
-
-                if (programHeader.Type == PT_DYNAMIC)
-                {
-                    dynamic = programHeader;
-                }
-            }
-
-            if (dynamic is { } dynHeader)
-            {
-                var dynSpan = fileData.Slice((int)dynHeader.Offset, (int)dynHeader.Filesz);
+                var dynSpan = fileData.Span.Slice((int)dynHeader.Offset, (int)dynHeader.Filesz);
                 var neededOffsets = new List<ulong>();
                 int step = elf.Is64 ? 16 : 8;
 
@@ -230,13 +157,15 @@ public static class ELFViewer
                 if (dtStrTabVA != 0 && dtStrSz != 0)
                 {
                     // VA -> file offset for DT_STRTAB
-                    long strtabFile = VaToFile(dtStrTabVA, programHeaders);
+                    long strtabFile = reader.VaToFile(dtStrTabVA);
 
                     if (strtabFile >= 0)
                     {
-                        string? soName = sonameOff.HasValue ? fileData.Slice((int)strtabFile + (int)sonameOff.Value).ReadNullTerminatedAsciiString() : null;
-                        string? rpath = rpathOff.HasValue ? fileData.Slice((int)strtabFile + (int)rpathOff.Value).ReadNullTerminatedAsciiString() : null;
-                        string? runpath = runpathOff.HasValue ? fileData.Slice((int)strtabFile + (int)runpathOff.Value).ReadNullTerminatedAsciiString() : null;
+                        var strtab = fileData.Span.Slice((int)strtabFile);
+
+                        string? soName = sonameOff.HasValue ? strtab.Slice((int)sonameOff.Value).ReadNullTerminatedAsciiString() : null;
+                        string? rpath = rpathOff.HasValue ? strtab.Slice((int)rpathOff.Value).ReadNullTerminatedAsciiString() : null;
+                        string? runpath = runpathOff.HasValue ? strtab.Slice((int)runpathOff.Value).ReadNullTerminatedAsciiString() : null;
 
                         if ((options & (Options.IncludeDelayedImports | Options.ShowImports | Options.ShowDependencies | Options.ShowDependencyTree)) != 0)
                         {
@@ -260,7 +189,7 @@ public static class ELFViewer
                             // Read needed strings
                             foreach (var off in neededOffsets)
                             {
-                                var needed = fileData.Slice((int)strtabFile + (int)off).ReadNullTerminatedAsciiString();
+                                var needed = strtab.Slice((int)off).ReadNullTerminatedAsciiString();
                                 Console.WriteLine(needed);
                             }
 

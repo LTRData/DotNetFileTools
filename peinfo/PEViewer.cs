@@ -114,7 +114,7 @@ public static class PEViewer
 
                     var securitySection = fileData.AsSpan(securitySectionLocation.RelativeVirtualAddress, securitySectionLocation.Size);
 
-                    var header = MemoryMarshal.Read<NativePE.WinCertificateHeader>(securitySection);
+                    ref readonly var header = ref securitySection.CastRef<NativePE.WinCertificateHeader>();
 
                     if (header.Revision == 0x200 && header.CertificateType == NativePE.CertificateType.PkcsSignedData)
                     {
@@ -267,7 +267,7 @@ public static class PEViewer
                         Console.WriteLine("Forwarded functions:");
                     }
 
-                    var exportDir = MemoryMarshal.Read<ImageExportDirectory>(fileData.AsSpan(exportSectionAddress, exportSection.Size));
+                    ref readonly var exportDir = ref fileData.AsSpan(exportSectionAddress, exportSection.Size).CastRef<ImageExportDirectory>();
 
                     var moduleName = reader.GetSectionData((int)exportDir.Name).AsSpan().ReadNullTerminatedAsciiString();
 
@@ -909,7 +909,7 @@ public static class PEViewer
         if (exportSection.Size > 0
             && reader.PEHeaders.TryGetDirectoryOffset(exportSection, out var exportSectionAddress))
         {
-            var exportDir = MemoryMarshal.Read<ImageExportDirectory>(fileData.AsSpan(exportSectionAddress, exportSection.Size));
+            ref readonly var exportDir = ref fileData.AsSpan(exportSectionAddress, exportSection.Size).CastRef<ImageExportDirectory>();
 
             if (exportDir.NumberOfNames != 0)
             {
@@ -1037,7 +1037,7 @@ public static class PEViewer
         {
             // Process any forwarders as dependencies
 
-            var exportDir = MemoryMarshal.Read<ImageExportDirectory>(fileData.AsSpan(exportSectionAddress, exportSection.Size));
+            var exportDir = fileData.AsSpan(exportSectionAddress, exportSection.Size).CastRef<ImageExportDirectory>();
             var moduleName = reader.GetSectionData((int)exportDir.Name).AsSpan().ReadNullTerminatedAsciiString();
 
             List<(string forwarderModuleName, (ulong Ordinal, ushort Hint, string? Name) function)>? forwarders = null;

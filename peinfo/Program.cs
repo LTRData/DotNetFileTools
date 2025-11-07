@@ -8,6 +8,7 @@ using DiscUtils.Compression;
 using DiscUtils.Streams;
 using DiscUtils.Wim;
 using K4os.Compression.LZ4.Streams;
+using LTRData.Extensions.Buffers;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
 using LTRData.Extensions.Native;
@@ -505,7 +506,7 @@ Options:
 
     public static byte[] DecompressKwaj(byte[] fileData)
     {
-        var header = MemoryMarshal.Read<KwajHeader>(fileData);
+        ref readonly var header = ref fileData.CastRef<KwajHeader>();
 
         if ((header.ExtensionFlags & 0x1) == 0)
         {
@@ -561,7 +562,7 @@ Options:
 
     public static byte[] DecompressSzdd(byte[] fileData)
     {
-        var header = MemoryMarshal.Read<SzddHeader>(fileData);
+        ref readonly var header = ref fileData.CastRef<SzddHeader>();
 
         var result = new byte[header.Length];
 

@@ -156,7 +156,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
         if (version < 3)
         {
             offset = Unsafe.SizeOf<ApiSetHeader2>();
-            var header = MemoryMarshal.Read<ApiSetHeader2>(apisetSection);
+            ref readonly var header = ref apisetSection.CastRef<ApiSetHeader2>();
 
             var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader2>(apisetSection.Slice(offset)).Slice(0, header.Count);
 
@@ -179,7 +179,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
                 var namespaceName = $"api-{name.ToString()}";
 #endif
 
-                var arrayHeader = MemoryMarshal.Read<ApiSetValueArrayHeader2>(apisetSection.Slice(item.DataOffset));
+                ref readonly var arrayHeader = ref apisetSection.Slice(item.DataOffset).CastRef<ApiSetValueArrayHeader2>();
 
                 var values = MemoryMarshal.Cast<byte, ApiSetValueEntry2>(apisetSection.Slice(item.DataOffset + Unsafe.SizeOf<ApiSetValueArrayHeader2>())).Slice(0, arrayHeader.Count);
 
@@ -199,7 +199,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
         else if (version < 6)
         {
             offset = Unsafe.SizeOf<ApiSetHeader3>();
-            var header = MemoryMarshal.Read<ApiSetHeader3>(apisetSection);
+            ref readonly var header = ref apisetSection.CastRef<ApiSetHeader3>();
 
             var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader3>(apisetSection.Slice(offset)).Slice(0, header.Count);
 
@@ -222,7 +222,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
                 var namespaceName = $"api-{name.ToString()}";
 #endif
 
-                var arrayHeader = MemoryMarshal.Read<ApiSetValueArrayHeader3>(apisetSection.Slice(item.DataOffset));
+                ref readonly var arrayHeader = ref apisetSection.Slice(item.DataOffset).CastRef<ApiSetValueArrayHeader3>();
 
                 var values = MemoryMarshal.Cast<byte, ApiSetValueEntry3>(apisetSection.Slice(item.DataOffset + Unsafe.SizeOf<ApiSetValueArrayHeader3>())).Slice(0, arrayHeader.Count);
 
@@ -241,7 +241,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
         }
         else if (version < 8)
         {
-            var header = MemoryMarshal.Read<ApiSetHeader6>(apisetSection);
+            ref readonly var header = ref apisetSection.CastRef<ApiSetHeader6>();
 
             var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader6>(apisetSection.Slice(header.entryOffset)).Slice(0, header.Count);
 
