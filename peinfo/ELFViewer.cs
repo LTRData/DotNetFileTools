@@ -29,16 +29,16 @@ public static class ELFViewer
         {
             Console.WriteLine();
             Console.WriteLine("ELF identity:");
-            Console.WriteLine($"{"Class",-35}{elf.Ident.Class}");
-            Console.WriteLine($"{"Data encoding",-35}{elf.Ident.Data}");
-            Console.WriteLine($"{"Version",-35}{elf.Ident.Version}");
-            Console.WriteLine($"{"OS/ABI",-35}{elf.Ident.OsAbi}");
-            Console.WriteLine($"{"ABI version",-35}{elf.Ident.AbiVersion}");
+            Console.WriteLine($"{"Class",-35}{elf.Ident.Class} (0x{(byte)elf.Ident.Class:x2})");
+            Console.WriteLine($"{"Data encoding",-35}{elf.Ident.Data} (0x{(byte)elf.Ident.Data:x2})");
+            Console.WriteLine($"{"Version",-35}{elf.Ident.Version} (0x{(byte)elf.Ident.Version:x2})");
+            Console.WriteLine($"{"OS/ABI",-35}{elf.Ident.OsAbi} (0x{(byte)elf.Ident.OsAbi:x2})");
+            Console.WriteLine($"{"ABI version",-35}0x{elf.Ident.AbiVersion:x2}");
             Console.WriteLine();
             Console.WriteLine("ELF header:");
-            Console.WriteLine($"{"Type",-35}{elf.Type}");
-            Console.WriteLine($"{"Machine",-35}{elf.Machine}");
-            Console.WriteLine($"{"Version",-35}{elf.Version}");
+            Console.WriteLine($"{"Type",-35}{elf.Type} (0x{(ushort)elf.Type:x4})");
+            Console.WriteLine($"{"Machine",-35}{elf.Machine} (0x{(ushort)elf.Machine:x4})");
+            Console.WriteLine($"{"Version",-35}{elf.Version} (0x{(uint)elf.Version:x8})");
         }
 
         ElfHeaderEnd end;
@@ -59,9 +59,9 @@ public static class ELFViewer
         }
         else
         {
-            var elfHeader64 = MemoryMarshal.Read<ElfHeader32>(fileData);
+            var elfHeader32 = MemoryMarshal.Read<ElfHeader32>(fileData);
 
-            end = elfHeader64.End;
+            end = elfHeader32.End;
 
             if (!options.HasFlag(Options.SuppressHeaders))
             {
@@ -75,7 +75,7 @@ public static class ELFViewer
         if (!options.HasFlag(Options.SuppressHeaders))
         {
             Console.WriteLine();
-            Console.WriteLine($"{"Machine flags",-35}{end.Flags}");
+            Console.WriteLine($"{"Machine flags",-35}{end.Flags} (0x{(uint)end.Flags:x8})");
             Console.WriteLine($"{"ELF header size",-35}{end.HeaderSize:N0} bytes");
             Console.WriteLine($"{"Program header entry size",-35}{end.ProgramHeaderEntrySize:N0} bytes");
             Console.WriteLine($"{"Number of program header entries",-35}{end.ProgramHeaderEntryCount:N0}");
@@ -84,7 +84,7 @@ public static class ELFViewer
             Console.WriteLine($"{"Section header string table index",-35}{end.SectionHeaderStringTableIndex}");
         }
 
-        if ((options & (Options.ShowDependencies | Options.ShowDependencyTree | Options.ShowImports)) != 0)
+        if ((options & (Options.ShowDependencies | Options.ShowDependencyTree | Options.ShowImports | Options.IncludeDelayedImports | Options.ShowExports)) != 0)
         {
             ElfProgramHeader? dynamic = null;
 
@@ -238,54 +238,58 @@ public static class ELFViewer
                         string? rpath = rpathOff.HasValue ? fileData.Slice((int)strtabFile + (int)rpathOff.Value).ReadNullTerminatedAsciiString() : null;
                         string? runpath = runpathOff.HasValue ? fileData.Slice((int)strtabFile + (int)runpathOff.Value).ReadNullTerminatedAsciiString() : null;
 
-                        Console.WriteLine();
-                        Console.WriteLine("Imported Modules:");
-
-                        if (soName is not null)
+                        if ((options & (Options.IncludeDelayedImports | Options.ShowImports | Options.ShowDependencies | Options.ShowDependencyTree)) != 0)
                         {
-                            Console.WriteLine($"{"soName",-35}{soName}");
+                            Console.WriteLine();
+                            Console.WriteLine("Imported Modules:");
+
+                            if (rpath is not null)
+                            {
+                                Console.WriteLine($"{"rpath",-35}{rpath}");
+                            }
+
+                            if (runpath is not null)
+                            {
+                                Console.WriteLine($"{"runpath",-35}{runpath}");
+                            }
+
+                            Console.WriteLine();
+
+                            Console.ForegroundColor = ConsoleColor.Cyan;
+
+                            // Read needed strings
+                            foreach (var off in neededOffsets)
+                            {
+                                var needed = fileData.Slice((int)strtabFile + (int)off).ReadNullTerminatedAsciiString();
+                                Console.WriteLine(needed);
+                            }
+
+                            Console.ResetColor();
+
+                            if (options.HasFlag(Options.ShowDependencyTree))
+                            {
+                                Console.WriteLine("Showing full dependency tree is not yet implemented for ELF files.");
+                            }
+
+                            if ((options & (Options.IncludeDelayedImports | Options.ShowImports)) != 0)
+                            {
+                                Console.WriteLine("Showing individual imported symbols is not yet implemented for ELF files.");
+                            }
                         }
 
-                        if (rpath is not null)
+                        if (options.HasFlag(Options.ShowExports)
+                            && soName is not null)
                         {
-                            Console.WriteLine($"{"rpath",-35}{rpath}");
-                        }
-
-                        if (runpath is not null)
-                        {
-                            Console.WriteLine($"{"runpath",-35}{runpath}");
-                        }
-
-                        Console.WriteLine();
-
-                        Console.ForegroundColor = ConsoleColor.Cyan;
-
-                        // Read needed strings
-                        foreach (var off in neededOffsets)
-                        {
-                            var needed = fileData.Slice((int)strtabFile + (int)off).ReadNullTerminatedAsciiString();
-                            Console.WriteLine(needed);
-                        }
-
-                        Console.ResetColor();
-
-                        if (options.HasFlag(Options.ShowDependencyTree))
-                        {
-                            Console.WriteLine("Showing full dependency tree is not yet implemented for ELF files.");
-                        }
-
-                        if ((options & (Options.IncludeDelayedImports | Options.ShowImports)) != 0)
-                        {
-                            Console.WriteLine("Showing individual imported symbols is not yet implemented for ELF files.");
+                            Console.WriteLine();
+                            Console.WriteLine("Exported symbols:");
+                            Console.ForegroundColor = ConsoleColor.Cyan;
+                            Console.WriteLine(soName);
+                            Console.ResetColor();
+                            Console.WriteLine("Showing individual exported symbols is not yet implemented for ELF files.");
                         }
                     }
                 }
             }
-        }
-
-        if (options.HasFlag(Options.ShowExports))
-        {
-            Console.WriteLine("Showing exported symbols is not yet implemented for ELF files.");
         }
     }
 }
