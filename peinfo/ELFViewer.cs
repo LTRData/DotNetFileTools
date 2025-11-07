@@ -15,65 +15,67 @@ public static class ELFViewer
     {
         var elf = MemoryMarshal.Read<ElfHeader>(fileData);
 
-        if (!options.HasFlag(Options.SuppressHeaders))
+        if (!elf.IsValid)
         {
+            Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine();
-            Console.WriteLine("ELF header:");
-            Console.WriteLine($"{"Machine",-35}{elf.Machine}");
-            Console.WriteLine($"{"Type",-35}{elf.Type}");
-            Console.WriteLine($"{"Class",-35}{elf.cls}");
-            Console.WriteLine($"{"Data encoding",-35}{elf.data}");
-            Console.WriteLine($"{"Version",-35}{elf.version}");
-            Console.WriteLine($"{"OS/ABI",-35}{elf.osabi}");
-            Console.WriteLine($"{"ABI version",-35}{elf.abiversion}");
-        }
+            Console.WriteLine("Invalid ELF file.");
+            Console.ResetColor();
 
-        ElfHeaderEnd? headerEnd = null;
-
-        ulong? programHeaderOffset = null;
-
-        if (elf.cls == ElfClass.ELFCLASS32)
-        {
-            var elf32 = MemoryMarshal.Read<ElfHeader32>(fileData);
-
-            if (!options.HasFlag(Options.SuppressHeaders))
-            {
-                Console.WriteLine();
-                Console.WriteLine($"{"Entry point",-35}0x{elf32.EntryPoint:x8}");
-                Console.WriteLine($"{"Program header offset",-35}0x{elf32.ProgramHeaderOffset:x8}");
-                Console.WriteLine($"{"Section header offset",-35}0x{elf32.SectionHeaderOffset:x8}");
-            }
-
-            programHeaderOffset = elf32.ProgramHeaderOffset;
-
-            headerEnd = elf32.End;
-        }
-        else if (elf.cls == ElfClass.ELFCLASS64)
-        {
-            var elf64 = MemoryMarshal.Read<ElfHeader64>(fileData);
-
-            if (!options.HasFlag(Options.SuppressHeaders))
-            {
-                Console.WriteLine();
-                Console.WriteLine($"{"Entry point",-35}0x{elf64.EntryPoint:x16}");
-                Console.WriteLine($"{"Program header offset",-35}0x{elf64.ProgramHeaderOffset:x16}");
-                Console.WriteLine($"{"Section header offset",-35}0x{elf64.SectionHeaderOffset:x16}");
-            }
-
-            programHeaderOffset = elf64.ProgramHeaderOffset;
-
-            headerEnd = elf64.End;
-        }
-
-        if (headerEnd is not { } end || !programHeaderOffset.HasValue)
-        {
             return;
         }
 
         if (!options.HasFlag(Options.SuppressHeaders))
         {
             Console.WriteLine();
-            Console.WriteLine($"{"Flags",-35}0x{end.Flags:x8}");
+            Console.WriteLine("ELF identity:");
+            Console.WriteLine($"{"Class",-35}{elf.Ident.Class}");
+            Console.WriteLine($"{"Data encoding",-35}{elf.Ident.Data}");
+            Console.WriteLine($"{"Version",-35}{elf.Ident.Version}");
+            Console.WriteLine($"{"OS/ABI",-35}{elf.Ident.OsAbi}");
+            Console.WriteLine($"{"ABI version",-35}{elf.Ident.AbiVersion}");
+            Console.WriteLine();
+            Console.WriteLine("ELF header:");
+            Console.WriteLine($"{"Type",-35}{elf.Type}");
+            Console.WriteLine($"{"Machine",-35}{elf.Machine}");
+            Console.WriteLine($"{"Version",-35}{elf.Version}");
+        }
+
+        ElfHeaderEnd end;
+
+        if (elf.Is64)
+        {
+            var elfHeader64 = MemoryMarshal.Read<ElfHeader64>(fileData);
+            
+            end = elfHeader64.End;
+
+            if (!options.HasFlag(Options.SuppressHeaders))
+            {
+                Console.WriteLine();
+                Console.WriteLine($"{"Entry point",-35}0x{end.EntryPoint:x16}");
+                Console.WriteLine($"{"Program header offset",-35}0x{end.ProgramHeaderOffset:x16}");
+                Console.WriteLine($"{"Section header offset",-35}0x{end.SectionHeaderOffset:x16}");
+            }
+        }
+        else
+        {
+            var elfHeader64 = MemoryMarshal.Read<ElfHeader32>(fileData);
+
+            end = elfHeader64.End;
+
+            if (!options.HasFlag(Options.SuppressHeaders))
+            {
+                Console.WriteLine();
+                Console.WriteLine($"{"Entry point",-35}0x{end.EntryPoint:x8}");
+                Console.WriteLine($"{"Program header offset",-35}0x{end.ProgramHeaderOffset:x8}");
+                Console.WriteLine($"{"Section header offset",-35}0x{end.SectionHeaderOffset:x8}");
+            }
+        }
+
+        if (!options.HasFlag(Options.SuppressHeaders))
+        {
+            Console.WriteLine();
+            Console.WriteLine($"{"Machine flags",-35}{end.Flags}");
             Console.WriteLine($"{"ELF header size",-35}{end.HeaderSize:N0} bytes");
             Console.WriteLine($"{"Program header entry size",-35}{end.ProgramHeaderEntrySize:N0} bytes");
             Console.WriteLine($"{"Number of program header entries",-35}{end.ProgramHeaderEntryCount:N0}");
@@ -86,7 +88,7 @@ public static class ELFViewer
         {
             ElfProgramHeader? dynamic = null;
 
-            var phs = new List<ElfProgramHeader>(end.ProgramHeaderEntryCount);
+            var programHeaders = new List<ElfProgramHeader>(end.ProgramHeaderEntryCount);
 
             static long VaToFile(ulong va, List<ElfProgramHeader> phs)
             {
@@ -103,27 +105,24 @@ public static class ELFViewer
                 return -1;
             }
 
-            bool is64 = elf.cls == ElfClass.ELFCLASS64;
-            bool isLittleEndian = elf.data == ElfData.ELFDATA2LSB;
-
             for (ushort i = 0; i < end.ProgramHeaderEntryCount; i++)
             {
-                var entryData = fileData.Slice((int)programHeaderOffset.Value + i * end.ProgramHeaderEntrySize, end.ProgramHeaderEntrySize);
+                var entryData = fileData.Slice((int)end.ProgramHeaderOffset + i * end.ProgramHeaderEntrySize, end.ProgramHeaderEntrySize);
 
                 ElfProgramHeader programHeader;
 
-                if (is64)
+                if (elf.Is64)
                 {
                     var header = MemoryMarshal.Read<ElfProgramHeader64>(entryData);
-                    programHeader = header.Parse(isLittleEndian);
+                    programHeader = header.Parse(elf.IsLittleEndian);
                 }
                 else
                 {
                     var header = MemoryMarshal.Read<ElfProgramHeader32>(entryData);
-                    programHeader = header.Parse(isLittleEndian);
+                    programHeader = header.Parse(elf.IsLittleEndian);
                 }
 
-                phs.Add(programHeader);
+                programHeaders.Add(programHeader);
 
                 const int PT_DYNAMIC = 2;
 
@@ -137,17 +136,17 @@ public static class ELFViewer
             {
                 var dynSpan = fileData.Slice((int)dynHeader.Offset, (int)dynHeader.Filesz);
                 var neededOffsets = new List<ulong>();
-                int step = is64 ? 16 : 8;
+                int step = elf.Is64 ? 16 : 8;
 
                 for (int off = 0; off + step <= dynSpan.Length; off += step)
                 {
-                    long tag = is64
-                        ? (long)MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off)).Parse(isLittleEndian)
-                        : (int)MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off)).Parse(isLittleEndian);
+                    long tag = elf.Is64
+                        ? (long)ElfUInt64.Parse(dynSpan.Slice(off), elf.IsLittleEndian)
+                        : (int)ElfUInt32.Parse(dynSpan.Slice(off), elf.IsLittleEndian);
 
-                    ulong val = is64
-                        ? MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off + 8)).Parse(isLittleEndian)
-                        : MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off + 4)).Parse(isLittleEndian);
+                    ulong val = elf.Is64
+                        ? ElfUInt64.Parse(dynSpan.Slice(off + 8), elf.IsLittleEndian)
+                        : ElfUInt32.Parse(dynSpan.Slice(off + 4), elf.IsLittleEndian);
 
                     if (tag == 0)
                     {
@@ -192,10 +191,10 @@ public static class ELFViewer
                 ulong dtStrSz = 0;
                 for (int off = 0; off + step <= dynSpan.Length; off += step)
                 {
-                    long tag = is64 ? (long)MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off)).Parse(isLittleEndian)
-                                    : (int)MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off)).Parse(isLittleEndian);
-                    ulong val = is64 ? MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off + (is64 ? 8 : 4))).Parse(isLittleEndian)
-                                     : MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off + 4)).Parse(isLittleEndian);
+                    long tag = elf.Is64 ? (long)MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off)).Parse(elf.IsLittleEndian)
+                                    : (int)MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off)).Parse(elf.IsLittleEndian);
+                    ulong val = elf.Is64 ? MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off + (elf.Is64 ? 8 : 4))).Parse(elf.IsLittleEndian)
+                                     : MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off + 4)).Parse(elf.IsLittleEndian);
 
                     if (tag == 0)
                     {
@@ -231,7 +230,7 @@ public static class ELFViewer
                 if (dtStrTabVA != 0 && dtStrSz != 0)
                 {
                     // VA -> file offset for DT_STRTAB
-                    long strtabFile = VaToFile(dtStrTabVA, phs);
+                    long strtabFile = VaToFile(dtStrTabVA, programHeaders);
 
                     if (strtabFile >= 0)
                     {
@@ -275,7 +274,7 @@ public static class ELFViewer
                             Console.WriteLine("Showing full dependency tree is not yet implemented for ELF files.");
                         }
 
-                        if ((options & (Options.IncludeDelayedImports | Options.ShowDependencyTree | Options.ShowImports)) != 0)
+                        if ((options & (Options.IncludeDelayedImports | Options.ShowImports)) != 0)
                         {
                             Console.WriteLine("Showing individual imported symbols is not yet implemented for ELF files.");
                         }
@@ -291,96 +290,3 @@ public static class ELFViewer
     }
 }
 
-public unsafe struct ElfUInt32
-{
-    private fixed byte value[sizeof(uint)];
-
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-    private ReadOnlySpan<byte> Span => MemoryMarshal.CreateReadOnlySpan(ref value[0], sizeof(uint));
-#else
-    private ReadOnlySpan<byte> Span => new(Unsafe.AsPointer(ref value[0]), sizeof(uint));
-#endif
-
-    public uint Parse(bool asLittleEndian)
-    {
-        if (asLittleEndian)
-        {
-            return EndianUtilities.ToUInt32LittleEndian(Span);
-        }
-        else
-        {
-            return EndianUtilities.ToUInt32BigEndian(Span);
-        }
-    }
-}
-
-public unsafe struct ElfUInt64
-{
-    private fixed byte value[sizeof(ulong)];
-
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-    private ReadOnlySpan<byte> Span => MemoryMarshal.CreateReadOnlySpan(ref value[0], sizeof(ulong));
-#else
-    private ReadOnlySpan<byte> Span => new(Unsafe.AsPointer(ref value[0]), sizeof(ulong));
-#endif
-
-    public ulong Parse(bool asLittleEndian)
-    {
-        if (asLittleEndian)
-        {
-            return EndianUtilities.ToUInt64LittleEndian(Span);
-        }
-        else
-        {
-            return EndianUtilities.ToUInt64BigEndian(Span);
-        }
-    }
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct ElfProgramHeader32
-{
-    public readonly ElfUInt32 p_type;
-    public readonly ElfUInt32 p_offset;
-    public readonly ElfUInt32 p_vaddr;
-    public readonly ElfUInt32 p_paddr;
-    public readonly ElfUInt32 p_size;
-    public readonly ElfUInt32 p_memsz;
-    public readonly ElfUInt32 p_flags;
-    public readonly ElfUInt32 p_align;
-
-    public ElfProgramHeader Parse(bool isLittleEndian)
-    {
-        return new(
-            p_type.Parse(isLittleEndian),
-            p_offset.Parse(isLittleEndian),
-            p_vaddr.Parse(isLittleEndian),
-            p_size.Parse(isLittleEndian),
-            p_memsz.Parse(isLittleEndian));
-    }
-}
-
-[StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct ElfProgramHeader64
-{
-    public readonly ElfUInt32 p_type;
-    public readonly ElfUInt32 p_flags;
-    public readonly ElfUInt64 p_offset;
-    public readonly ElfUInt64 p_vaddr;
-    public readonly ElfUInt64 p_paddr;
-    public readonly ElfUInt64 p_size;
-    public readonly ElfUInt64 p_memsz;
-    public readonly ElfUInt64 p_align;
-
-    public ElfProgramHeader Parse(bool isLittleEndian)
-    {
-        return new(
-            p_type.Parse(isLittleEndian),
-            p_offset.Parse(isLittleEndian),
-            p_vaddr.Parse(isLittleEndian),
-            p_size.Parse(isLittleEndian),
-            p_memsz.Parse(isLittleEndian));
-    }
-}
-
-public readonly record struct ElfProgramHeader(ulong Type, ulong Offset, ulong Vaddr, ulong Filesz, ulong Memsz);
