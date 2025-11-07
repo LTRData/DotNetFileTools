@@ -92,6 +92,7 @@ public static class PEViewer
             {
                 Console.WriteLine();
                 Console.WriteLine("PE optional header:");
+                Console.WriteLine($"{"Magic",-24}{peHeader.Magic}");
                 Console.WriteLine($"{"Subsystem",-24}{peHeader.Subsystem}");
                 Console.WriteLine($"{"Entry point",-24}0x{peHeader.AddressOfEntryPoint:x8}");
                 Console.WriteLine($"{"Image base",-24}0x{peHeader.ImageBase:x16}");
