@@ -14,26 +14,44 @@ namespace TestAssembly;
 
 public static class Program
 {
-    private static string FormatConstantValue(this FieldInfo field)
+    private static void WriteConstantValue(this Action<string> writer, FieldInfo field)
     {
         var value = field.GetRawConstantValue();
 
         if (value is null)
         {
-            return "null";
+            writer("null");
         }
         else if (value is string str)
         {
-            return $"'{str.Replace(@"\", @"\\").Replace("'", @"\'")}'";
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            writer($@"""{str.Replace(@"\", @"\\").Replace("'", @"\'")}""");
         }
         else if (field.FieldType.IsEnum &&
             field.FieldType != field.DeclaringType)
         {
-            return $"({field.FieldType.FormatTypeName()}){Enum.ToObject(field.FieldType, value)}";
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
+            writer("(");
+            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            writer(field.FieldType.FormatTypeName());
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
+            writer(")");
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            writer(Enum.ToObject(field.FieldType, value).ToString() ?? "null");
+        }
+        else if (value is IFormattable fmt)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            writer(fmt.ToString(format: null, CultureInfo.InvariantCulture));
+        }
+        else if (value.ToString() is { } str2)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            writer(str2);
         }
         else
         {
-            return value.ToString() ?? "null";
+            writer("null");
         }
     }
 
@@ -41,7 +59,9 @@ public static class Program
     {
         var fullName = type.FullName;
 
-        if (fullName is null || fullName.StartsWith("System.", StringComparison.Ordinal))
+        if (fullName is null
+            || fullName.StartsWith("System.", StringComparison.Ordinal)
+            || fullName.StartsWith("Microsoft.", StringComparison.Ordinal))
         {
             fullName = type.Name;
         }
@@ -85,22 +105,22 @@ public static class Program
 
         foreach (var arg in cmd)
         {
-            if ("-c" == arg.Key)
+            if ("c" == arg.Key)
             {
                 continueOnFailure = true;
             }
-            else if ("-r" == arg.Key)
+            else if ("r" == arg.Key)
             {
                 searchOption = SearchOption.AllDirectories;
             }
-            else if ("-q" == arg.Key)
+            else if ("q" == arg.Key)
             {
                 quiet = true;
             }
             else if (arg.Key != "")
             {
                 Console.Error.WriteLine(@"Syntax:
-testassembly [-c] [-r] file1 [file2 ...]
+testassembly [-c] [-r] [-q] file1 [file2 ...]
 
 Prints out metadata information for classes and members of classes in a .NET
 assembly. If any member cannot be resolved, the application exits with an
@@ -113,6 +133,7 @@ build/merge/edit operations.
 
 -q          Quiet, no output but exits with zero or non-zero depending on
             success or failure
+
 ");
 
                 return -1;
@@ -157,7 +178,7 @@ build/merge/edit operations.
                 WriteLine?.Invoke(fullpath);
                 Console.ResetColor();
 
-                ListAssembly(Write, WriteLine, asm);
+                ListAssembly(Write, WriteLine, asm, continueOnFailure);
 
                 continue;
             }
@@ -175,6 +196,7 @@ build/merge/edit operations.
             }
             catch (Exception ex)
             {
+                Console.Error.WriteLine();
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.Error.WriteLine($"{fullpath}: {ex}");
                 Console.ResetColor();
@@ -191,12 +213,23 @@ build/merge/edit operations.
         return result;
     }
 
-    private static void ListAssembly(Action<string>? Write, Action<string>? WriteLine, Assembly asm)
+    private static void ListAssembly(Action<string>? Write, Action<string>? WriteLine, Assembly asm, bool continueOnFailure)
     {
         foreach (var t in asm.GetTypes())
         {
             Console.ForegroundColor = ConsoleColor.DarkYellow;
             Write?.Invoke("  ");
+
+            if (t.IsPublic)
+            {
+                Write?.Invoke("public ");
+            }
+
+            if (!t.IsVisible)
+            {
+                Write?.Invoke("invisible ");
+            }
+
             if (t.IsNestedAssembly)
             {
                 Write?.Invoke("internal ");
@@ -343,6 +376,7 @@ build/merge/edit operations.
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 Write?.Invoke("    ");
+                
                 if (m.IsAssembly)
                 {
                     Write?.Invoke("internal ");
@@ -389,7 +423,21 @@ build/merge/edit operations.
 
                 if (!m.IsLiteral || m.FieldType != m.DeclaringType)
                 {
-                    Write?.Invoke(m.FieldType.FormatTypeName() + " ");
+                    Console.ForegroundColor = ConsoleColor.DarkYellow;
+                    
+                    try
+                    {
+                        Write?.Invoke(m.FieldType.FormatTypeName() + " ");
+                    }
+                    catch (Exception ex)
+                    when (continueOnFailure)
+                    {
+                        Write?.Invoke("@@unknown ");
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Write?.Invoke($"/* Failed to load type ({ex.Message}) */ ");
+                    }
+
+                    Console.ForegroundColor = ConsoleColor.DarkCyan;
                 }
 
                 Console.ForegroundColor = ConsoleColor.Gray;
@@ -399,8 +447,7 @@ build/merge/edit operations.
                 {
                     Console.ForegroundColor = ConsoleColor.DarkCyan;
                     Write?.Invoke(" = ");
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Write?.Invoke(m.FormatConstantValue());
+                    Write?.WriteConstantValue(m);
                 }
 
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
@@ -415,6 +462,7 @@ build/merge/edit operations.
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 Write?.Invoke("    ");
+
                 if (m.IsAssembly)
                 {
                     Write?.Invoke("internal ");
@@ -493,7 +541,9 @@ build/merge/edit operations.
                         sb.Append("out ");
                     }
 
+                    Console.ForegroundColor = ConsoleColor.DarkYellow;
                     sb.Append(p.ParameterType.FormatTypeName());
+                    Console.ForegroundColor = ConsoleColor.DarkCyan;
                     sb.Append(' ');
                     sb.Append(p.Name);
                     if (p.HasDefaultValue)
@@ -517,6 +567,7 @@ build/merge/edit operations.
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 Write?.Invoke("    ");
+
                 if (m.IsAssembly)
                 {
                     Write?.Invoke("internal ");
@@ -591,7 +642,18 @@ build/merge/edit operations.
                     Write?.Invoke(") ");
                 }
 
-                Write?.Invoke(m.ReturnType.FormatTypeName() + " ");
+                Console.ForegroundColor = ConsoleColor.DarkYellow;
+                try
+                {
+                    Write?.Invoke(m.ReturnType.FormatTypeName() + " ");
+                }
+                catch (Exception ex)
+                when (continueOnFailure)
+                {
+                    Write?.Invoke("@@unknown ");
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Write?.Invoke($"/* Failed to load type ({ex.Message}) */ ");
+                }
                 Console.ForegroundColor = ConsoleColor.Gray;
                 Write?.Invoke(m.Name);
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
@@ -625,7 +687,9 @@ build/merge/edit operations.
                         sb.Append("out ");
                     }
 
+                    Console.ForegroundColor = ConsoleColor.DarkYellow;
                     sb.Append(p.ParameterType.FormatTypeName());
+                    Console.ForegroundColor = ConsoleColor.DarkCyan;
                     sb.Append(' ');
                     sb.Append(p.Name);
 
@@ -639,6 +703,7 @@ build/merge/edit operations.
                             defaultValue = p.DefaultValue;
                         }
                         catch (Exception ex)
+                        when (continueOnFailure)
                         {
                             Console.ForegroundColor = ConsoleColor.Red;
                             Console.Error.WriteLine($@"
@@ -668,7 +733,9 @@ build/merge/edit operations.
 
                     if (ifimpl.Length > 0)
                     {
+                        Console.ForegroundColor = ConsoleColor.DarkYellow;
                         Write?.Invoke($" = {string.Join(", ", ifimpl)}");
+                        Console.ForegroundColor = ConsoleColor.DarkCyan;
                     }
                 }
 
