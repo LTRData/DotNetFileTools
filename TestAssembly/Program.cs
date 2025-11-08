@@ -421,24 +421,21 @@ build/merge/edit operations.
                     Write?.Invoke("readonly ");
                 }
 
-                if (!m.IsLiteral || m.FieldType != m.DeclaringType)
-                {
-                    Console.ForegroundColor = ConsoleColor.DarkYellow;
+                Console.ForegroundColor = ConsoleColor.DarkYellow;
                     
-                    try
-                    {
-                        Write?.Invoke(m.FieldType.FormatTypeName() + " ");
-                    }
-                    catch (Exception ex)
-                    when (continueOnFailure)
-                    {
-                        Write?.Invoke("@@unknown ");
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Write?.Invoke($"/* Failed to load type ({ex.Message}) */ ");
-                    }
-
-                    Console.ForegroundColor = ConsoleColor.DarkCyan;
+                try
+                {
+                    Write?.Invoke(m.FieldType.FormatTypeName() + " ");
                 }
+                catch (Exception ex)
+                when (continueOnFailure)
+                {
+                    Write?.Invoke("@@unknown ");
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Write?.Invoke($"/* Failed to load type ({ex.Message}) */ ");
+                }
+
+                Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 Console.ForegroundColor = ConsoleColor.Gray;
                 Write?.Invoke(m.Name);
@@ -643,6 +640,7 @@ build/merge/edit operations.
                 }
 
                 Console.ForegroundColor = ConsoleColor.DarkYellow;
+                
                 try
                 {
                     Write?.Invoke(m.ReturnType.FormatTypeName() + " ");
@@ -654,6 +652,7 @@ build/merge/edit operations.
                     Console.ForegroundColor = ConsoleColor.Red;
                     Write?.Invoke($"/* Failed to load type ({ex.Message}) */ ");
                 }
+
                 Console.ForegroundColor = ConsoleColor.Gray;
                 Write?.Invoke(m.Name);
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
