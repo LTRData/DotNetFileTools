@@ -17,6 +17,85 @@ namespace peinfo;
 
 public static class PEViewer
 {
+    public static void ProcessMZFile(byte[] fileData,
+                                     string filePath,
+                                     Func<string, bool> fileExistsFunc,
+                                     Func<string, byte[]> readAllBytesFunc,
+                                     Options options)
+    {
+        ref readonly var dos_header = ref NativePE.GetImageDosHeader(fileData);
+
+        if (dos_header.e_lfanew == 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("MS-DOS EXE file detected.");
+            return;
+        }
+
+        var new_header = fileData.AsSpan(dos_header.e_lfanew);
+
+        var magic = MemoryMarshal.Read<ushort>(new_header);
+
+        switch (magic)
+        {
+            case (ushort)ImageNtHeaders.ExpectedSignature:
+                Console.WriteLine();
+                Console.WriteLine("PE file detected.");
+                ProcessPEFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
+                
+                return;
+
+            case ImageNeHeader.ExpectedSignature:
+                Console.WriteLine();
+                Console.WriteLine("Windows or OS/2 16 bit file detected.");
+
+                ref readonly var ne_header = ref new_header.CastRef<ImageNeHeader>();
+
+                Console.WriteLine($"{"Target OS",-24}{ne_header.targOS} (0x{(ushort)ne_header.targOS:x2})");
+                Console.WriteLine($"{"OS/2 EXE flags",-24}{ne_header.OS2EXEFlags} (0x{(ushort)ne_header.OS2EXEFlags:x2})");
+                Console.WriteLine($"{"Linker version",-24}{ne_header.MajLinkerVersion}.{ne_header.MinLinkerVersion}");
+                Console.WriteLine($"{"Windows version",-24}{ne_header.expctwinverMajor}.{ne_header.expctwinverMinor}");
+                Console.WriteLine($"{"Entry table offset",-24}0x{ne_header.EntryTableOffset:x4}");
+                Console.WriteLine($"{"Entry table length",-24}0x{ne_header.EntryTableLength:x4}");
+                Console.WriteLine($"{"File load CRC",-24}0x{ne_header.FileLoadCRC:x8}");
+                Console.WriteLine($"{"Flags",-24}{ne_header.FlagWord} (0x{(ushort)ne_header.FlagWord:x4})");
+                Console.WriteLine($"{"Entry point",-24}0x{ne_header.EntryPoint:x4}");
+
+                return;
+
+            case N3OverlayHeader.ExpectedSignature:
+                Console.WriteLine();
+                Console.WriteLine("MS-DOS EXE file with n3 overlays detected.");
+
+                ref readonly var n3_header = ref new_header.CastRef<N3OverlayHeader>();
+
+                Console.WriteLine($"{"Version",-24}{n3_header.VersionMajor}.{n3_header.VersionMinor}");
+
+                return;
+
+            case LE_LX_Header.ExpectedSignatureLE:
+            case LE_LX_Header.ExpectedSignatureLX:
+                Console.WriteLine();
+                Console.WriteLine("Windows VxD or OS/2 file detected.");
+
+                ref readonly var le_lx_header = ref new_header.CastRef<LE_LX_Header>();
+
+                Console.WriteLine($"{"Format level",-24}0x{le_lx_header.FormatLevel:x8}");
+                Console.WriteLine($"{"CPU type",-24}{le_lx_header.CpuType} (0x{(ushort)le_lx_header.CpuType:x4})");
+                Console.WriteLine($"{"Target OS",-24}{le_lx_header.TargetOS} (0x{(ushort)le_lx_header.TargetOS:x4})");
+                Console.WriteLine($"{"Module version",-24}0x{le_lx_header.ModuleVersion:x8}");
+                Console.WriteLine($"{"Module flags",-24}{le_lx_header.ModuleFlags} (0x{(ushort)le_lx_header.ModuleFlags:x8})");
+
+                return;
+
+            default:
+                Console.WriteLine();
+                Console.WriteLine("MZ file format with unknown extension detected. Initial header bytes:");
+                HexExtensions.WriteHex(Console.Out, fileData.Skip(dos_header.e_lfanew).Take(16));
+                return;
+        }
+    }
+
     public static void ProcessPEFile(byte[] fileData,
                                      string filePath,
                                      Func<string, bool> fileExistsFunc,
@@ -30,7 +109,7 @@ public static class PEViewer
             var coffHeader = reader.PEHeaders.CoffHeader;
 
             Console.WriteLine();
-            Console.WriteLine("MZ header:");
+            Console.WriteLine("PE header:");
             Console.WriteLine($"{"Machine",-24}{coffHeader.Machine}");
             Console.WriteLine($"{"Characteristics",-24}{coffHeader.Characteristics}");
 
@@ -95,7 +174,7 @@ public static class PEViewer
                 Console.WriteLine($"{"Magic",-24}{peHeader.Magic}");
                 Console.WriteLine($"{"Subsystem",-24}{peHeader.Subsystem}");
                 Console.WriteLine($"{"Entry point",-24}0x{peHeader.AddressOfEntryPoint:x8}");
-                Console.WriteLine($"{"Image base",-24}0x{peHeader.ImageBase:x16}");
+                Console.WriteLine($"{"Image base",-24}0x{peHeader.ImageBase:x8}");
                 Console.WriteLine($"{"Size of image",-24}{peHeader.SizeOfImage:N0} bytes");
                 Console.WriteLine($"{"Size of headers",-24}{peHeader.SizeOfHeaders:N0} bytes");
                 Console.WriteLine($"{"Base of code",-24}0x{peHeader.BaseOfCode:x8}");

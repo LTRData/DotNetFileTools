@@ -365,7 +365,7 @@ Options:
         }
         else if (fileData.AsSpan(0, 2).SequenceEqual("MZ"u8))
         {
-            PEViewer.ProcessPEFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
+            PEViewer.ProcessMZFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
         else if (fileData[0] == 127 && fileData.AsSpan(1, 3).SequenceEqual("ELF"u8))
@@ -459,7 +459,9 @@ Options:
                 var buffer = new byte[((IArchive)xz).FileEntries.First().Length!.Value];
                 using var decompr = new MemoryStream(buffer);
                 xz.Extract(decompr);
-                
+
+                fileData = buffer;
+
                 continue;
             }
 
