@@ -155,16 +155,7 @@ build/merge/edit operations.
             WriteLine = Console.WriteLine;
         }
 
-        foreach (var arg in args.SelectMany(name =>
-        {
-            var dir = Path.GetDirectoryName(name);
-            if (string.IsNullOrWhiteSpace(dir))
-            {
-                dir = ".";
-            }
-
-            return Directory.EnumerateFiles(dir, Path.GetFileName(name), searchOption);
-        }))
+        foreach (var arg in args.SelectMany(name => Directory.EnumerateFiles(Path.GetDirectoryName(name) is { Length: > 0 } dir ? dir : ".", Path.GetFileName(name), searchOption)))
         {
             var fullpath = Path.GetFullPath(arg);
 
@@ -185,6 +176,7 @@ build/merge/edit operations.
             catch (ReflectionTypeLoadException ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
+
                 foreach (var tlex in ex.LoaderExceptions)
                 {
                     Console.Error.WriteLine($"{fullpath}: {tlex}");

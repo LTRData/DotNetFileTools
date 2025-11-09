@@ -116,6 +116,7 @@ public static class ELFViewer
                 ulong? rpathOff = runpathOff = sonameOff = null;
                 ulong dtStrTabVA = 0;
                 ulong dtStrSz = 0;
+
                 for (int off = 0; off + step <= dynSpan.Length; off += step)
                 {
                     long tag = elf.Is64 ? (long)MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off)).Parse(elf.IsLittleEndian)

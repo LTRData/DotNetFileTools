@@ -1315,7 +1315,7 @@ public static class PEViewer
     public static unsafe ReadOnlySpan<byte> AsSpan(in this PEMemoryBlock memoryBlock)
         => new(memoryBlock.Pointer, memoryBlock.Length);
 
-    public static unsafe ReadOnlySpan<byte> AsSpan<T>(in this PEMemoryBlock memoryBlock) where T : unmanaged
+    public static unsafe ReadOnlySpan<T> AsSpan<T>(in this PEMemoryBlock memoryBlock) where T : unmanaged
         => new(memoryBlock.Pointer, memoryBlock.Length / Unsafe.SizeOf<T>());
 
     public static unsafe nint GetAddress(in this PEMemoryBlock memoryBlock)
