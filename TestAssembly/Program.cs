@@ -32,12 +32,52 @@ public static class Program
         {
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             writer("(");
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            Console.ForegroundColor = ConsoleColor.Yellow;
             writer(field.FieldType.FormatTypeName());
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             writer(")");
             Console.ForegroundColor = ConsoleColor.Cyan;
             writer(Enum.ToObject(field.FieldType, value).ToString() ?? "null");
+        }
+        else if (value is IFormattable fmt)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            writer(fmt.ToString(format: null, CultureInfo.InvariantCulture));
+        }
+        else if (value.ToString() is { } str2)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            writer(str2);
+        }
+        else
+        {
+            writer("null");
+        }
+    }
+
+    private static void WriteConstantValue(this Action<string> writer, ParameterInfo param)
+    {
+        var value = param.DefaultValue;
+
+        if (value is null)
+        {
+            writer("null");
+        }
+        else if (value is string str)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            writer($@"""{str.Replace(@"\", @"\\").Replace("'", @"\'")}""");
+        }
+        else if (param.ParameterType.IsEnum)
+        {
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
+            writer("(");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            writer(param.ParameterType.FormatTypeName());
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
+            writer(")");
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            writer(Enum.ToObject(param.ParameterType, value).ToString() ?? "null");
         }
         else if (value is IFormattable fmt)
         {
@@ -63,10 +103,25 @@ public static class Program
             || fullName.StartsWith("System.", StringComparison.Ordinal)
             || fullName.StartsWith("Microsoft.", StringComparison.Ordinal))
         {
-            fullName = type.Name;
+            if (type.Name is not null and not "&")
+            {
+                fullName = type.Name;
+            }
+            else
+            {
+                fullName = type.FullName?.Replace("System.", null)
+                    ?? "<unknown>";
+            }
         }
 
         var name = new StringBuilder();
+
+#if NET7_0_OR_GREATER
+        if (type.IsUnmanagedFunctionPointer)
+        {
+            name.Append("function*");
+        }
+#endif
 
         var endpos = fullName.IndexOf('`');
 
@@ -80,13 +135,16 @@ public static class Program
         }
 
         if (type.IsGenericType &&
-            type.GetGenericArguments() is Type[] gentypes &&
+            type.GetGenericArguments() is { } gentypes &&
             gentypes.Length > 0)
         {
             name.Append('<');
             name.Append(string.Join(", ", gentypes.Select(FormatTypeName)));
             name.Append('>');
         }
+
+        if (name.Length == 0 || name[0] == '&')
+        { }
 
         return name.ToString();
     }
@@ -97,6 +155,7 @@ public static class Program
         Thread.CurrentThread.CurrentUICulture = CultureInfo.InvariantCulture;
 
         var continueOnFailure = false;
+        var showInvisible = false;
         var searchOption = SearchOption.TopDirectoryOnly;
         var quiet = false;
         var result = 0;
@@ -112,6 +171,10 @@ public static class Program
             else if ("r" == arg.Key)
             {
                 searchOption = SearchOption.AllDirectories;
+            }
+            else if ("i" == arg.Key)
+            {
+                showInvisible = true;
             }
             else if ("q" == arg.Key)
             {
@@ -130,6 +193,8 @@ build/merge/edit operations.
 -c          Continue on errors
 
 -r          Search subdirectories
+
+-i          Show invisible types
 
 -q          Quiet, no output but exits with zero or non-zero depending on
             success or failure
@@ -169,7 +234,7 @@ build/merge/edit operations.
                 WriteLine?.Invoke(fullpath);
                 Console.ResetColor();
 
-                ListAssembly(Write, WriteLine, asm, continueOnFailure);
+                ListAssembly(Write, WriteLine, asm, showInvisible, continueOnFailure);
 
                 continue;
             }
@@ -205,11 +270,16 @@ build/merge/edit operations.
         return result;
     }
 
-    private static void ListAssembly(Action<string>? Write, Action<string>? WriteLine, Assembly asm, bool continueOnFailure)
+    private static void ListAssembly(Action<string>? Write, Action<string>? WriteLine, Assembly asm, bool showInvisible, bool continueOnFailure)
     {
         foreach (var t in asm.GetTypes())
         {
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            if (!t.IsVisible && !showInvisible)
+            {
+                continue;
+            }
+
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
             Write?.Invoke("  ");
 
             if (t.IsPublic)
@@ -324,11 +394,11 @@ build/merge/edit operations.
 
             Console.ForegroundColor = ConsoleColor.Yellow;
             Write?.Invoke(t.FormatTypeName());
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
 
             var baseTypes = new List<Type>();
 
-            if (t.BaseType is Type baseType &&
+            if (t.BaseType is { } baseType &&
                 baseType != typeof(object) &&
                 baseType != typeof(ValueType))
             {
@@ -345,7 +415,7 @@ build/merge/edit operations.
             InterfaceMapping[]? interfaceMappings;
 
             if (!t.IsInterface &&
-                t.GetInterfaces() is Type[] interfaces &&
+                t.GetInterfaces() is { } interfaces &&
                 interfaces.Length > 0)
             {
                 baseTypes.AddRange(interfaces);
@@ -356,11 +426,24 @@ build/merge/edit operations.
                 interfaceMappings = null;
             }
 
-            if (baseTypes.Count > 0)
+            foreach (var (b, i) in baseTypes.Select((b, i) => (b, i)))
             {
-                Write?.Invoke($" : {string.Join(", ", baseTypes.Select(bt => bt.FormatTypeName()))}");
+                if (i == 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkCyan;
+                    Write?.Invoke(" : ");
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkCyan;
+                    Write?.Invoke(", ");
+                }
+
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Write?.Invoke(b.FormatTypeName());
             }
 
+            Console.ForegroundColor = ConsoleColor.Cyan;
             WriteLine?.Invoke(" {");
 
             foreach (var m in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
@@ -413,7 +496,7 @@ build/merge/edit operations.
                     Write?.Invoke("readonly ");
                 }
 
-                Console.ForegroundColor = ConsoleColor.DarkYellow;
+                Console.ForegroundColor = ConsoleColor.Yellow;
                     
                 try
                 {
@@ -429,7 +512,7 @@ build/merge/edit operations.
 
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
-                Console.ForegroundColor = ConsoleColor.Gray;
+                Console.ForegroundColor = ConsoleColor.White;
                 Write?.Invoke(m.Name);
 
                 if (m.IsLiteral)
@@ -445,6 +528,8 @@ build/merge/edit operations.
 
                 Console.ResetColor();
             }
+
+            WriteLine?.Invoke("");
 
             foreach (var m in t.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
@@ -502,52 +587,69 @@ build/merge/edit operations.
                     Write?.Invoke("final ");
                 }
 
-                Console.ForegroundColor = ConsoleColor.Gray;
+                Console.ForegroundColor = ConsoleColor.White;
                 Write?.Invoke(m.Name);
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
+                Write?.Invoke("(");
 
-                var param = m.GetParameters().Select(p =>
+                foreach (var (p, i) in m.GetParameters().Select((param, i) => (param, i)))
                 {
-                    var sb = new StringBuilder();
+                    if (i > 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkCyan;
+                        Write?.Invoke(", ");
+                    }
+
                     if (p.Position == 0 &&
                         p.Member.IsDefined(typeof(ExtensionAttribute), inherit: false))
                     {
-                        sb.Append("this ");
+                        Write?.Invoke("this ");
                     }
 
                     if (p.IsRetval)
                     {
-                        sb.Append("retval ");
+                        Write?.Invoke("retval ");
                     }
 
                     if (p.IsIn)
                     {
-                        sb.Append("in ");
+                        Write?.Invoke("in ");
                     }
 
                     if (p.IsOut)
                     {
-                        sb.Append("out ");
+                        Write?.Invoke("out ");
                     }
 
-                    Console.ForegroundColor = ConsoleColor.DarkYellow;
-                    sb.Append(p.ParameterType.FormatTypeName());
-                    Console.ForegroundColor = ConsoleColor.DarkCyan;
-                    sb.Append(' ');
-                    sb.Append(p.Name);
-                    if (p.HasDefaultValue)
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Write?.Invoke(p.ParameterType.FormatTypeName());
+                    Console.ForegroundColor = ConsoleColor.White;
+                    Write?.Invoke($" {p.Name}");
+                    if (p.IsOptional || p.HasDefaultValue)
                     {
-                        sb.Append(" = ");
-                        sb.Append(p.DefaultValue ?? "null");
+                        Write?.Invoke(" = ");
+
+                        try
+                        {
+                            Write?.WriteConstantValue(p);
+                        }
+                        catch (Exception ex)
+                        when (continueOnFailure)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.Error.WriteLine($@"
+default /* Unresolved DefaultValue for '{p.Name}': {ex.GetType().Name}: {ex.Message} */");
+                            Console.ResetColor();
+                        }
                     }
+                }
 
-                    return sb.ToString();
-                });
-
-                WriteLine?.Invoke($"({string.Join(", ", param)});");
-
+                Console.ForegroundColor = ConsoleColor.DarkCyan;
+                WriteLine?.Invoke(");");
                 Console.ResetColor();
             }
+
+            WriteLine?.Invoke("");
 
             List<(string library, string entryPoint, CharSet charSet)>? imports = null;
 
@@ -631,7 +733,7 @@ build/merge/edit operations.
                     Write?.Invoke(") ");
                 }
 
-                Console.ForegroundColor = ConsoleColor.DarkYellow;
+                Console.ForegroundColor = ConsoleColor.Yellow;
                 
                 try
                 {
@@ -645,72 +747,70 @@ build/merge/edit operations.
                     Write?.Invoke($"/* Failed to load type ({ex.Message}) */ ");
                 }
 
-                Console.ForegroundColor = ConsoleColor.Gray;
+                Console.ForegroundColor = ConsoleColor.White;
                 Write?.Invoke(m.Name);
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
+                Write?.Invoke("(");
 
-                var param = m.GetParameters().Select(p =>
+                foreach (var (p, i) in m.GetParameters().Select((p, i) => (p, i)))
                 {
-                    var sb = new StringBuilder();
+                    if (i > 0)
+                    {
+                        Write?.Invoke(", ");
+                    }
+
                     if (p.Position == 0 &&
                         p.Member.IsDefined(typeof(ExtensionAttribute)))
                     {
-                        sb.Append("this ");
+                        Write?.Invoke("this ");
                     }
 
                     if (p.IsRetval)
                     {
-                        sb.Append("retval ");
+                        Write?.Invoke("retval ");
                     }
 
                     if (p.IsOptional)
                     {
-                        sb.Append("optional ");
+                        Write?.Invoke("optional ");
                     }
 
                     if (p.IsIn)
                     {
-                        sb.Append("in ");
+                        Write?.Invoke("in ");
                     }
 
                     if (p.IsOut)
                     {
-                        sb.Append("out ");
+                        Write?.Invoke("out ");
                     }
 
-                    Console.ForegroundColor = ConsoleColor.DarkYellow;
-                    sb.Append(p.ParameterType.FormatTypeName());
-                    Console.ForegroundColor = ConsoleColor.DarkCyan;
-                    sb.Append(' ');
-                    sb.Append(p.Name);
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Write?.Invoke(p.ParameterType.FormatTypeName());
+                    Console.ForegroundColor = ConsoleColor.White;
+                    Write?.Invoke($" {p.Name}");
 
                     if (p.IsOptional || p.HasDefaultValue)
                     {
-                        sb.Append(" = ");
+                        Write?.Invoke(" = ");
 
-                        object? defaultValue = null;
                         try
                         {
-                            defaultValue = p.DefaultValue;
+                            Write?.WriteConstantValue(p);
                         }
                         catch (Exception ex)
                         when (continueOnFailure)
                         {
                             Console.ForegroundColor = ConsoleColor.Red;
                             Console.Error.WriteLine($@"
-// Unresolved DefaultValue for '{p.Name}': {ex.GetType().Name}: {ex.Message}");
+default /* Unresolved DefaultValue for '{p.Name}': {ex.GetType().Name}: {ex.Message} */");
                             Console.ResetColor();
-
-                            defaultValue = "unknown";
                         }
-
-                        sb.Append(defaultValue ?? "default");
                     }
+                }
 
-                    return sb.ToString();
-                });
-
-                Write?.Invoke($"({string.Join(", ", param)})");
+                Console.ForegroundColor = ConsoleColor.DarkCyan;
+                Write?.Invoke(")");
 
                 if (interfaceMappings is not null)
                 {
@@ -724,7 +824,7 @@ build/merge/edit operations.
 
                     if (ifimpl.Length > 0)
                     {
-                        Console.ForegroundColor = ConsoleColor.DarkYellow;
+                        Console.ForegroundColor = ConsoleColor.Yellow;
                         Write?.Invoke($" = {string.Join(", ", ifimpl)}");
                         Console.ForegroundColor = ConsoleColor.DarkCyan;
                     }
@@ -782,7 +882,7 @@ build/merge/edit operations.
             }
 #endif
 
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            Console.ForegroundColor = ConsoleColor.Cyan;
             WriteLine?.Invoke("  }");
             Console.ResetColor();
 
