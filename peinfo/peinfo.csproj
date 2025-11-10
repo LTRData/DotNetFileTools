@@ -12,7 +12,7 @@
   <ItemGroup>
     <PackageReference Include="LTRData.Extensions" Version="*" />
     <PackageReference Include="ArsenalRecon.ImageMounter" Version="*" />
-    <PackageReference Include="System.Reflection.Metadata" Version="*" />
+    <PackageReference Include="System.Reflection.Metadata" Version="*" Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))" />
     <PackageReference Include="LTRData.DiscUtils.Wim" Version="*" />
     <PackageReference Include="LTRData.DiscUtils" Version="*" />
     <PackageReference Include="LTRData.ExFat.DiscUtils" Version="*" />

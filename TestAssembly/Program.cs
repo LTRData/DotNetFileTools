@@ -156,6 +156,7 @@ public static class Program
 
         var continueOnFailure = false;
         var showInvisible = false;
+        var hidePrivate = false;
         var searchOption = SearchOption.TopDirectoryOnly;
         var quiet = false;
         var result = 0;
@@ -176,6 +177,10 @@ public static class Program
             {
                 showInvisible = true;
             }
+            else if ("p" == arg.Key)
+            {
+                hidePrivate = true;
+            }
             else if ("q" == arg.Key)
             {
                 quiet = true;
@@ -195,6 +200,8 @@ build/merge/edit operations.
 -r          Search subdirectories
 
 -i          Show invisible types
+
+-p          Only show public types and members
 
 -q          Quiet, no output but exits with zero or non-zero depending on
             success or failure
@@ -234,7 +241,7 @@ build/merge/edit operations.
                 WriteLine?.Invoke(fullpath);
                 Console.ResetColor();
 
-                ListAssembly(Write, WriteLine, asm, showInvisible, continueOnFailure);
+                ListAssembly(Write, WriteLine, asm, showInvisible, hidePrivate, continueOnFailure);
 
                 continue;
             }
@@ -270,11 +277,12 @@ build/merge/edit operations.
         return result;
     }
 
-    private static void ListAssembly(Action<string>? Write, Action<string>? WriteLine, Assembly asm, bool showInvisible, bool continueOnFailure)
+    private static void ListAssembly(Action<string>? Write, Action<string>? WriteLine, Assembly asm, bool showInvisible, bool hidePrivate, bool continueOnFailure)
     {
         foreach (var t in asm.GetTypes())
         {
-            if (!t.IsVisible && !showInvisible)
+            if (!t.IsVisible && !showInvisible
+                || (t.IsNestedPrivate || t.IsNestedFamily || t.IsNestedFamANDAssem) && hidePrivate)
             {
                 continue;
             }
@@ -448,6 +456,11 @@ build/merge/edit operations.
 
             foreach (var m in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
+                if (hidePrivate && !m.IsPublic && !m.IsFamily && !m.IsFamilyOrAssembly)
+                {
+                    continue;
+                }
+
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 Write?.Invoke("    ");
@@ -533,6 +546,11 @@ build/merge/edit operations.
 
             foreach (var m in t.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
+                if (hidePrivate && !m.IsPublic && !m.IsFamily && !m.IsFamilyOrAssembly)
+                {
+                    continue;
+                }
+
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 Write?.Invoke("    ");
@@ -655,6 +673,13 @@ default /* Unresolved DefaultValue for '{p.Name}': {ex.GetType().Name}: {ex.Mess
 
             foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
+                var dllimport = m.GetCustomAttribute<DllImportAttribute>();
+
+                if (hidePrivate && dllimport is null && !m.IsPublic && !m.IsFamily && !m.IsFamilyOrAssembly)
+                {
+                    continue;
+                }
+
                 Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 Write?.Invoke("    ");
@@ -709,8 +734,7 @@ default /* Unresolved DefaultValue for '{p.Name}': {ex.GetType().Name}: {ex.Mess
                     Write?.Invoke("final ");
                 }
 
-                var dllimport = m.GetCustomAttribute<DllImportAttribute>();
-                if (dllimport is not null && !m.IsDefined(typeof(ObsoleteAttribute)))
+                if (dllimport is not null)
                 {
                     imports ??= [];
                     Write?.Invoke("import(");
@@ -756,6 +780,7 @@ default /* Unresolved DefaultValue for '{p.Name}': {ex.GetType().Name}: {ex.Mess
                 {
                     if (i > 0)
                     {
+                        Console.ForegroundColor = ConsoleColor.DarkCyan;
                         Write?.Invoke(", ");
                     }
 
@@ -814,21 +839,32 @@ default /* Unresolved DefaultValue for '{p.Name}': {ex.GetType().Name}: {ex.Mess
 
                 if (interfaceMappings is not null)
                 {
-                    var ifimpl = interfaceMappings
+                    foreach (var (tn, mn, i) in interfaceMappings
                         .Select(ifm => ifm.TargetMethods
                         .Select((tm, i) => new { tm, im = ifm.InterfaceMethods[i] })
                         .Where(o => o.tm == m))
                         .SelectMany(o => o)
-                        .Select(o => $"{o.im.DeclaringType?.FormatTypeName()}.{o.im.Name}")
-                        .ToArray();
-
-                    if (ifimpl.Length > 0)
+                        .Select((o, i) => ($"{o.im.DeclaringType?.FormatTypeName()}.", o.im.Name, i)))
                     {
+                        if (i == 0)
+                        {
+                            Console.ForegroundColor = ConsoleColor.DarkCyan;
+                            Write?.Invoke(" : ");
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.DarkCyan;
+                            Write?.Invoke(", ");
+                        }
+
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Write?.Invoke($" = {string.Join(", ", ifimpl)}");
-                        Console.ForegroundColor = ConsoleColor.DarkCyan;
+                        Write?.Invoke(tn);
+                        Console.ForegroundColor = ConsoleColor.White;
+                        Write?.Invoke(mn);
                     }
                 }
+
+                Console.ForegroundColor = ConsoleColor.DarkCyan;
 
                 WriteLine?.Invoke(";");
 
