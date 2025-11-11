@@ -4,7 +4,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <Description>Show photo location on map</Description>
-    <TargetFrameworks>net46;net9.0-windows;net8.0-windows</TargetFrameworks>
+    <TargetFrameworks>net46;net10.0-windows;net9.0-windows;net8.0-windows</TargetFrameworks>
     <ApplicationIcon>icons8-country-80.ico</ApplicationIcon>
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>

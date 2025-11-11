@@ -6,10 +6,10 @@
     <Title>netcheck</Title>
     <Product>netcheck</Product>
     <Copyright>Copyright © Olof Lagerkvist, LTR Data 2011-2023</Copyright>
-    <TargetFrameworks>net48;netstandard2.1;net20;net40;net6.0;net8.0;net9.0</TargetFrameworks>
+    <TargetFrameworks>net48;netstandard2.1;net20;net40;net6.0;net8.0;net10.0;net9.0</TargetFrameworks>
   </PropertyGroup>
 
-	<ItemGroup Condition="'$(TargetFramework.CompareTo(`net47`))' &gt;= 0">
+	<ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'netcoreapp3.1')) And $([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'netstandard2.0'))">
 	  <PackageReference Include="System.Reflection.Metadata" Version="6.0.0" />
 	</ItemGroup>
 

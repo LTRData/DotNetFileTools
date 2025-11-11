@@ -133,16 +133,16 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
         }
 
         return Environment.GetEnvironmentVariable("PATH").AsMemory()
-                .TokenEnum(Path.PathSeparator)
-                .Select(m => m.ToString())
-                .Prepend(Environment.GetFolderPath(Environment.SpecialFolder.System))
-                .Where(Directory.Exists)
-                .Distinct()
-                .Select(path => Path.Combine(path, "apisetschema.dll"))
-                .Where(File.Exists)
-                .Select(GetApiSetTranslations)
-                .FirstOrDefault(dict => dict.HasTranslations)
-                ?? Empty;
+            .TokenEnum(Path.PathSeparator)
+            .Select(m => m.ToString())
+            .Prepend(Environment.GetFolderPath(Environment.SpecialFolder.System))
+            .Where(Directory.Exists)
+            .Distinct()
+            .Select(path => Path.Combine(path, "apisetschema.dll"))
+            .Where(File.Exists)
+            .Select(GetApiSetTranslations)
+            .FirstOrDefault(dict => dict.HasTranslations)
+            ?? Empty;
     }
 
     private static ApiSetDictionary? ParseTranslations(ReadOnlySpan<byte> apisetSection)
