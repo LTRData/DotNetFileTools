@@ -17,5 +17,16 @@
     <Company>Olof Lagerkvist, LTR Data</Company>
     <Copyright>Copyright © Olof Lagerkvist, LTR Data</Copyright>
   </PropertyGroup>
-  
+
+  <Target Name="EnsureExeConfigFile" AfterTargets="Build" Condition="$(OutputFile.EndsWith(`.exe`))">
+    <ItemGroup>
+      <_ExeConfig Include="$(OutputPath)$(AssemblyName).exe.config" />
+    </ItemGroup>
+    <WriteLinesToFile
+      File="@(_ExeConfig)"
+      Lines="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; ?&gt;&#x0A;&lt;configuration&gt;&#x0A;&lt;/configuration&gt;"
+      Overwrite="false"
+      Encoding="UTF-8" />
+  </Target>
+
 </Project>

@@ -8,7 +8,14 @@
 
   <ItemGroup>
     <PackageReference Include="LTRData.Extensions" Version="*" />
-    <PackageReference Include="NuGet.Protocol" Version="*" />
   </ItemGroup>
+
+	<ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net472')) And !$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">
+		<PackageReference Include="NuGet.Protocol" Version="6.*" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net472')) Or $([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">
+		<PackageReference Include="NuGet.Protocol" Version="*" />
+	</ItemGroup>
 
 </Project>

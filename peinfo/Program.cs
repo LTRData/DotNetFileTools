@@ -16,7 +16,6 @@ using System.IO.Compression;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
 
 #if !NET6_0_OR_GREATER
 using ZLibStream = DiscUtils.Compression.ZlibStream;

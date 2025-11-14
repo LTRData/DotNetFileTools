@@ -1,5 +1,4 @@
 ﻿using Arsenal.ImageMounter.IO.Native;
-using DiscUtils.Streams;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.Formatting;
 using LTRData.Extensions.Native.Memory;
@@ -14,6 +13,9 @@ using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 
 namespace peinfo;
+
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable IDE0057 // Use range operator
 
 public static class PEViewer
 {
@@ -975,7 +977,7 @@ public static class PEViewer
     private static ImmutableArray<(ulong Ordinal, string? Name)> GetExports(byte[] fileData)
     {
         using var reader = new PEReader([.. fileData]);
-
+        
         if (reader.PEHeaders.PEHeader is not { } peHeader)
         {
             throw new InvalidDataException("Not a valid PE file with executable sections");

@@ -1,7 +1,5 @@
 ﻿using Arsenal.ImageMounter.IO.Native;
-using DiscUtils.Streams;
 using LTRData.Extensions.Buffers;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace peinfo;
