@@ -1,4 +1,5 @@
-﻿using Aspose.Zip;
+﻿using Arsenal.ImageMounter.Collections;
+using Aspose.Zip;
 using Aspose.Zip.Cab;
 using Aspose.Zip.SevenZip;
 using Aspose.Zip.Xz;
@@ -44,7 +45,7 @@ public static class Program
     {
         var errCode = 0;
 
-        string? imagePath = null;
+        string[]? imagePaths = null;
         var partNo = 0;
         string? wimPath = null;
         var wimIndex = 1;
@@ -58,9 +59,9 @@ public static class Program
         foreach (var cmd in cmds)
         {
             if (cmd.Key == "image"
-                && cmd.Value.Length == 1)
+                && cmd.Value.Length >= 1)
             {
-                imagePath = cmd.Value[0];
+                imagePaths = cmd.Value;
             }
             else if (cmd.Key == "part"
                 && cmd.Value.Length == 1
@@ -69,8 +70,7 @@ public static class Program
             {
             }
             else if (cmd.Key == "wim"
-                && cmd.Value.Length == 1
-                && !cmds.ContainsKey("image"))
+                && cmd.Value.Length == 1)
             {
                 wimPath = cmd.Value[0];
             }
@@ -150,6 +150,9 @@ Image files:
     --wim=imagefile         Path to WIM image file containing the files to analyze.
     --index=wimindex        WIM image index number to use (1-based).
 
+                            It is possible to combine --image and --wim switches to
+                            analyze a WIM image inside for example an ISO image.
+
 Options:
     --recurse               Recurse into subdirectories.
     -r
@@ -187,38 +190,80 @@ Options:
             }
         }
 
-        if (imagePath is not null)
+        using var disposables = new DisposableList();
+
+        DiscFileSystem? fs = null;
+
+        if (imagePaths is not null)
         {
             DiscUtils.Complete.SetupHelper.SetupComplete();
             DiscUtils.Setup.SetupHelper.RegisterAssembly(typeof(ExFat.DiscUtils.ExFatFileSystem).Assembly);
 
             Console.WriteLine();
-            Console.WriteLine(imagePath);
+
+            if (partNo == 0 && imagePaths.Length != 1)
+            {
+                throw new ArgumentException("Partition 0 for whole image can only be specified with a single image file.");
+            }
+
+            var vdisks = new DisposableList<VirtualDisk>(imagePaths.Length);
+
+            disposables.Add(vdisks);
+
+            foreach (var imagePath in imagePaths)
+            {
+                Console.WriteLine(imagePath);
+
+                var vdisk = VirtualDisk.OpenDisk(imagePath, FileAccess.Read)
+                    ?? new DiscUtils.Raw.Disk(imagePath, FileAccess.Read);
+
+                vdisks.Add(vdisk);
+            }
+
+            Stream? part = null;
+
+            if (partNo != 0)
+            {
+                var volmgr = new VolumeManager();
+
+                foreach (var vdisk in vdisks)
+                {
+                    volmgr.AddDisk(vdisk);
+                }
+
+                part = volmgr.GetLogicalVolumes()?.ElementAtOrDefault(partNo - 1)?.Open()
+                    ?? throw new DriveNotFoundException($"Partition {partNo} not found");
+            }
+            else
+            {
+                part = vdisks[0].Content;
+            }
+
+            disposables.Add(part);
+
+            fs = FileSystemManager.DetectFileSystems(part).FirstOrDefault()?.Open(part)
+                ?? throw new NotSupportedException($"No supported file systems detected in partition {partNo}");
+
+            disposables.Add(fs);
         }
 
-        using var vdisk = imagePath is not null
-            ? (VirtualDisk.OpenDisk(imagePath, FileAccess.Read)
-                ?? new DiscUtils.Raw.Disk(imagePath, FileAccess.Read))
-            : null;
+        if (wimPath is not null)
+        {
+            Console.WriteLine();
+            Console.WriteLine(wimPath);
 
-        using var wim = wimPath is not null
-            ? File.OpenRead(wimPath)
-            : null;
+            Stream wim = fs is not null
+                ? fs.OpenFile(wimPath, FileMode.Open, FileAccess.Read)
+                : File.OpenRead(wimPath);
 
-        using var part = vdisk is not null
-            ? partNo != 0
-            ? (new VolumeManager(vdisk).GetLogicalVolumes()?.ElementAtOrDefault(partNo - 1)?.Open()
-                ?? throw new DriveNotFoundException($"Partition {partNo} not found"))
-            : vdisk.Content
-            : null;
+            disposables.Add(wim);
 
-        using var fs = part is not null
-            ? (FileSystemManager.DetectFileSystems(part).FirstOrDefault()?.Open(part)
-                ?? throw new NotSupportedException($"No supported file systems detected in partition {partNo}"))
-            : wim is not null
-            ? (new WimFile(wim).TryGetImage(wimIndex - 1, out var wimfs) ? wimfs
-                : throw new DriveNotFoundException($"Index {wimIndex} not found in WIM file"))
-            : null;
+            fs = new WimFile(wim).TryGetImage(wimIndex - 1, out var wimfs)
+                ? wimfs
+                : throw new DriveNotFoundException($"Index {wimIndex} not found in WIM file");
+
+            disposables.Add(wimfs);
+        }
 
         Func<string, bool> fileExistsFunc;
         Func<string, Stream> openFileFunc;

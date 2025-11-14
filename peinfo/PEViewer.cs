@@ -27,7 +27,7 @@ public static class PEViewer
     {
         ref readonly var dos_header = ref NativePE.GetImageDosHeader(fileData);
 
-        if (dos_header.e_lfanew == 0)
+        if (dos_header.e_lfanew <= 0 || dos_header.e_lfanew >= fileData.Length)
         {
             Console.WriteLine();
             Console.WriteLine("MS-DOS EXE file detected.");
