@@ -1,0 +1,31 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+  </Folder>
+  <Project Path="checksum/checksum.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="ExtractExeNetStrings/ExtractExeNetStrings.csproj" />
+  <Project Path="hexdump/hexdump.csproj" />
+  <Project Path="netcheck/netcheck.csproj" />
+  <Project Path="NetCompress/NetCompress.vbproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="peinfo/peinfo.csproj" />
+  <Project Path="PictureOnMap/PictureOnMap.csproj" />
+  <Project Path="reged/reged.csproj" />
+  <Project Path="ReplaceText/ReplaceText.csproj" />
+  <Project Path="setpkgver/setpkgver.csproj" />
+  <Project Path="splitbystr/splitbystr.csproj" />
+  <Project Path="TestAssembly/TestAssembly.csproj" />
+  <Project Path="TestProject/TestProject.csproj" />
+  <Project Path="txtcnv/txtcnv.csproj" />
+  <Project Path="VhdBlockBackup/VhdBlockBackup.csproj" />
+  <Project Path="ZipIO/ZipIO.csproj" />
+</Solution>
