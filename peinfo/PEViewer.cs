@@ -312,21 +312,21 @@ public static class PEViewer
 
                     ProcessImportTable(reader, descriptors);
                 }
+            }
 
-                if (options.HasFlag(Options.IncludeDelayedImports))
+            if (options.HasFlag(Options.IncludeDelayedImports))
+            {
+                var delayImportSection = peHeader.DelayImportTableDirectory;
+
+                if (delayImportSection.Size > 0
+                    && reader.PEHeaders.TryGetDirectoryOffset(delayImportSection, out var delayImportSectionAddress))
                 {
-                    var delayImportSection = peHeader.DelayImportTableDirectory;
+                    Console.WriteLine();
+                    Console.WriteLine("Delay Imported DLLs:");
 
-                    if (delayImportSection.Size > 0
-                        && reader.PEHeaders.TryGetDirectoryOffset(delayImportSection, out var delayImportSectionAddress))
-                    {
-                        Console.WriteLine();
-                        Console.WriteLine("Delay Imported DLLs:");
+                    var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
 
-                        var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
-
-                        ProcessDelayImportTable(reader, descriptors);
-                    }
+                    ProcessDelayImportTable(reader, descriptors);
                 }
             }
 
@@ -438,7 +438,8 @@ public static class PEViewer
     {
         foreach (var descr in descriptors)
         {
-            if (descr.OriginalFirstThunk == 0)
+            if (descr.OriginalFirstThunk <= 0
+                && descr.FirstThunk <= 0)
             {
                 break;
             }
@@ -476,7 +477,9 @@ public static class PEViewer
             Console.WriteLine();
             Console.ResetColor();
 
-            var thunksData = reader.GetSectionData((int)descr.OriginalFirstThunk).AsSpan();
+            var thunksData = descr.OriginalFirstThunk != 0
+                ? reader.GetSectionData((int)descr.OriginalFirstThunk).AsSpan()
+                : reader.GetSectionData((int)descr.FirstThunk).AsSpan();
 
             if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32)
             {
@@ -484,7 +487,7 @@ public static class PEViewer
 
                 foreach (var func in thunks)
                 {
-                    if (func == 0)
+                    if (func <= 0)
                     {
                         break;
                     }
@@ -506,7 +509,7 @@ public static class PEViewer
 
                 foreach (var func in thunks)
                 {
-                    if (func == 0)
+                    if (func <= 0)
                     {
                         break;
                     }
@@ -529,7 +532,7 @@ public static class PEViewer
     {
         foreach (var descr in descriptors)
         {
-            if (descr.NameTable == 0)
+            if (descr.NameTable <= 0)
             {
                 break;
             }
@@ -580,7 +583,7 @@ public static class PEViewer
 
                 foreach (var func in thunks)
                 {
-                    if (func == 0)
+                    if (func <= 0)
                     {
                         break;
                     }
@@ -602,7 +605,7 @@ public static class PEViewer
 
                 foreach (var func in thunks)
                 {
-                    if (func == 0)
+                    if (func <= 0)
                     {
                         break;
                     }
@@ -1041,7 +1044,8 @@ public static class PEViewer
 
             foreach (var descr in descriptors)
             {
-                if (descr.OriginalFirstThunk == 0)
+                if (descr.OriginalFirstThunk <= 0
+                    && descr.FirstThunk <= 0)
                 {
                     break;
                 }
@@ -1060,7 +1064,9 @@ public static class PEViewer
 
                 var functions = ImmutableArray.CreateBuilder<(ulong Ordinal, ushort Hint, string? Name)>();
 
-                var thunksData = reader.GetSectionData((int)descr.OriginalFirstThunk).AsSpan();
+                var thunksData = descr.OriginalFirstThunk != 0
+                    ? reader.GetSectionData((int)descr.OriginalFirstThunk).AsSpan()
+                    : reader.GetSectionData((int)descr.FirstThunk).AsSpan();
 
                 if (reader.PEHeaders.PEHeader!.Magic == PEMagic.PE32)
                 {
@@ -1068,7 +1074,7 @@ public static class PEViewer
 
                     foreach (var func in thunks)
                     {
-                        if (func == 0)
+                        if (func <= 0)
                         {
                             break;
                         }
@@ -1090,7 +1096,7 @@ public static class PEViewer
 
                     foreach (var func in thunks)
                     {
-                        if (func == 0)
+                        if (func <= 0)
                         {
                             break;
                         }
@@ -1188,7 +1194,7 @@ public static class PEViewer
 
             foreach (var descr in descriptors)
             {
-                if (descr.NameTable == 0)
+                if (descr.NameTable <= 0)
                 {
                     break;
                 }
@@ -1218,7 +1224,7 @@ public static class PEViewer
 
                     foreach (var func in thunks)
                     {
-                        if (func == 0)
+                        if (func <= 0)
                         {
                             break;
                         }
@@ -1240,7 +1246,7 @@ public static class PEViewer
 
                     foreach (var func in thunks)
                     {
-                        if (func == 0)
+                        if (func <= 0)
                         {
                             break;
                         }
