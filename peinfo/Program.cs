@@ -197,7 +197,6 @@ Options:
         if (imagePaths is not null)
         {
             DiscUtils.Complete.SetupHelper.SetupComplete();
-            DiscUtils.Setup.SetupHelper.RegisterAssembly(typeof(ExFat.DiscUtils.ExFatFileSystem).Assembly);
 
             Console.WriteLine();
 

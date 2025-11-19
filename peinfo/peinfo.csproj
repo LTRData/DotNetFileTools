@@ -15,7 +15,6 @@
     <PackageReference Include="System.Reflection.Metadata" Version="*" Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))" />
     <PackageReference Include="LTRData.DiscUtils.Wim" Version="*" />
     <PackageReference Include="LTRData.DiscUtils" Version="*" />
-    <PackageReference Include="LTRData.ExFat.DiscUtils" Version="*" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="*" />
     <PackageReference Include="K4os.Compression.LZ4.Streams" Version="*" />
     <PackageReference Include="Aspose.Zip" Version="*" />
