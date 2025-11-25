@@ -12,6 +12,9 @@ using ApiSetDictionary = System.Collections.Frozen.FrozenDictionary<string, stri
 
 namespace peinfo;
 
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable IDE0057 // Use range operator
+
 public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
 {
     public static ApiSetResolver Default

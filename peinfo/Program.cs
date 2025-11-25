@@ -1,4 +1,5 @@
 ﻿using Arsenal.ImageMounter.Collections;
+using Arsenal.ImageMounter.Devio.Server.Interaction;
 using Aspose.Zip;
 using Aspose.Zip.Cab;
 using Aspose.Zip.SevenZip;
@@ -10,6 +11,7 @@ using DiscUtils.Streams;
 using DiscUtils.Wim;
 using K4os.Compression.LZ4.Streams;
 using LTRData.Extensions.Buffers;
+using LTRData.Extensions.Collections;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
 using LTRData.Extensions.Native;
@@ -192,7 +194,7 @@ Options:
 
         using var disposables = new DisposableList();
 
-        DiscFileSystem? fs = null;
+        DiscFileSystem? fileSystem = null;
 
         if (imagePaths is not null)
         {
@@ -213,8 +215,7 @@ Options:
             {
                 Console.WriteLine(imagePath);
 
-                var vdisk = VirtualDisk.OpenDisk(imagePath, FileAccess.Read)
-                    ?? new DiscUtils.Raw.Disk(imagePath, FileAccess.Read);
+                var vdisk = DevioServiceFactory.GetDiscUtilsVirtualDisk(imagePath, FileAccess.Read);
 
                 vdisks.Add(vdisk);
             }
@@ -240,10 +241,25 @@ Options:
 
             disposables.Add(part);
 
-            fs = FileSystemManager.DetectFileSystems(part).FirstOrDefault()?.Open(part)
-                ?? throw new NotSupportedException($"No supported file systems detected in partition {partNo}");
+            fileSystem = FileSystemManager.DetectFileSystems(part).FirstOrDefault()?.Open(part);
 
-            disposables.Add(fs);
+            if (fileSystem is null)
+            {
+                if (partNo == 0 && vdisks[0].Partitions is not null)
+                {
+                    throw new NotSupportedException("No supported file system detected. Specify a partition using --part switch.");
+                }
+                else if (partNo == 0)
+                {
+                    throw new NotSupportedException("No supported file system detected in image file");
+                }
+                else
+                {
+                    throw new NotSupportedException($"No supported file system detected in partition {partNo}");
+                }
+            }
+
+            disposables.Add(fileSystem);
         }
 
         if (wimPath is not null)
@@ -251,13 +267,13 @@ Options:
             Console.WriteLine();
             Console.WriteLine(wimPath);
 
-            Stream wim = fs is not null
-                ? fs.OpenFile(wimPath, FileMode.Open, FileAccess.Read)
+            Stream wim = fileSystem is not null
+                ? fileSystem.OpenFile(wimPath, FileMode.Open, FileAccess.Read)
                 : File.OpenRead(wimPath);
 
             disposables.Add(wim);
 
-            fs = new WimFile(wim).TryGetImage(wimIndex - 1, out var wimfs)
+            fileSystem = new WimFile(wim).TryGetImage(wimIndex - 1, out var wimfs)
                 ? wimfs
                 : throw new DriveNotFoundException($"Index {wimIndex} not found in WIM file");
 
@@ -273,16 +289,16 @@ Options:
             files = [""];
         }
 
-        if (fs is not null)
+        if (fileSystem is not null)
         {
-            fileExistsFunc = fs.FileExists;
-            openFileFunc = path => fs.OpenFile(path, FileMode.Open, FileAccess.Read);
-            readAllBytesFunc = fs.ReadAllBytes;
+            fileExistsFunc = fileSystem.FileExists;
+            openFileFunc = path => fileSystem.OpenFile(path, FileMode.Open, FileAccess.Read);
+            readAllBytesFunc = fileSystem.ReadAllBytes;
 
             files = [.. files.SelectMany(f
                 => searchOption == SearchOption.TopDirectoryOnly && f.IndexOfAny('*', '?') < 0
                 ? [f]
-                : fs.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f), searchOption))];
+                : fileSystem.GetFiles(Path.GetDirectoryName(f) is { Length: > 0 } dir ? dir : "", Path.GetFileName(f), searchOption))];
         }
         else
         {

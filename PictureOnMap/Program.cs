@@ -1,6 +1,6 @@
 ﻿using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
-using LTRLib.Geodesy.Positions;
+using LTRData.Geodesy.Positions;
 using LTRLib.Imaging;
 using Microsoft.Win32;
 using System;
@@ -19,7 +19,7 @@ public static class Program
     {
         if (args is null || args.Length == 0)
         {
-            args = new[] { "/install" };
+            args = ["/install"];
         }
 
         var result = 0;

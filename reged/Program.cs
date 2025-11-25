@@ -1,8 +1,10 @@
-﻿using Arsenal.ImageMounter.IO.Devices;
+﻿using Arsenal.ImageMounter.Devio.Server.Interaction;
+using Arsenal.ImageMounter.IO.Devices;
 using DiscUtils;
 using DiscUtils.Registry;
 using DiscUtils.Streams;
 using DiscUtils.Wim;
+using LTRData.Extensions.Collections;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
 using System;
@@ -11,6 +13,9 @@ using System.IO;
 using System.Linq;
 
 namespace reged;
+
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable IDE0057 // Use range operator
 
 public static class Program
 {
@@ -45,8 +50,8 @@ public static class Program
 
     public static int UnsafeMain(params string[] args)
     {
-        string? imageFile = null;
-        var partition = 0;
+        string[]? imagePaths = null;
+        var partNo = 0;
         string? wimPath = null;
         var wimIndex = 1;
         string? hiveFile = null;
@@ -92,20 +97,26 @@ public static class Program
             {
                 hiveFile = cmd.Value[0];
             }
-            else if (cmd.Key == "image" && cmd.Value.Length == 1)
+            else if (cmd.Key == "image"
+                && cmd.Value.Length >= 1)
             {
-                imageFile = cmd.Value[0];
+                imagePaths = cmd.Value;
             }
-            else if (cmd.Key == "part" && cmd.Value.Length == 1
-                && cmds.ContainsKey("image") && int.TryParse(cmd.Value[0], out partition))
+            else if (cmd.Key == "part"
+                && cmd.Value.Length == 1
+                && int.TryParse(cmd.Value[0], out partNo)
+                && cmds.ContainsKey("image"))
             {
             }
-            else if (cmd.Key == "wim" && cmd.Value.Length == 1 && !cmds.ContainsKey("image"))
+            else if (cmd.Key == "wim"
+                && cmd.Value.Length == 1)
             {
                 wimPath = cmd.Value[0];
             }
-            else if (cmd.Key == "index" && cmd.Value.Length == 1
-                && int.TryParse(cmd.Value[0], out wimIndex) && cmds.ContainsKey("wim"))
+            else if (cmd.Key == "index"
+                && cmd.Value.Length == 1
+                && int.TryParse(cmd.Value[0], out wimIndex)
+                && cmds.ContainsKey("wim"))
             {
             }
             else if ((cmd.Key is "k" or "key") && cmd.Value.Length == 1)
@@ -217,58 +228,97 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             _ => throw new InvalidOperationException()
         };
 
-        if (imageFile is not null || wimPath is not null)
+        using var disposables = new DisposableList();
+
+        DiscFileSystem? fileSystem = null;
+
+        if (imagePaths is not null)
         {
-            DiscUtils.Containers.SetupHelper.SetupContainers();
-            DiscUtils.FileSystems.SetupHelper.SetupFileSystems();
-        }
+            DiscUtils.Complete.SetupHelper.SetupComplete();
 
-        using var image = OpenDiskImage(imageFile, access);
+            Console.WriteLine();
 
-        var partitions = image?.Partitions;
-
-        if (image is not null && partition > 0
-            && (partitions is null || partitions.Count < partition))
-        {
-            throw new DriveNotFoundException($"Partition {partition} not found in image '{imageFile}'");
-        }
-
-        var fileSystemStream = image is not null
-            ? partition == 0
-            ? image.Content
-            : partitions?[partition - 1].Open()
-            : null;
-
-        using var wimFileStream = wimPath is not null ? File.OpenRead(wimPath) : null;
-
-        var wimFile = wimFileStream is not null ? new WimFile(wimFileStream) : null;
-
-        var fileSystem = fileSystemStream is not null
-            && FileSystemManager.DetectFileSystems(fileSystemStream) is { } fsInfo
-            && fsInfo.Count > 0
-            ? fsInfo[0].Open(fileSystemStream) :
-            wimFile?.GetImage(wimIndex - 1);
-
-        if (imageFile is not null
-            && fileSystem is null)
-        {
-            if (partition == 0 && partitions is not null)
+            if (partNo == 0 && imagePaths.Length != 1)
             {
-                throw new NotSupportedException($"Image file '{imageFile}' does not contain a supported file system. Use --part to specify a partition in the image file.");
+                throw new ArgumentException("Partition 0 for whole image can only be specified with a single image file.");
             }
-            else if (partition == 0)
+
+            var vdisks = new DisposableList<VirtualDisk>(imagePaths.Length);
+
+            disposables.Add(vdisks);
+
+            foreach (var imagePath in imagePaths)
             {
-                throw new NotSupportedException($"Image file '{imageFile}' does not contain a supported file system.");
+                Console.WriteLine(imagePath);
+
+                var vdisk = DevioServiceFactory.GetDiscUtilsVirtualDisk(imagePath, access);
+
+                vdisks.Add(vdisk);
+            }
+
+            Stream? part = null;
+
+            if (partNo != 0)
+            {
+                var volmgr = new VolumeManager();
+
+                foreach (var vdisk in vdisks)
+                {
+                    volmgr.AddDisk(vdisk);
+                }
+
+                part = volmgr.GetLogicalVolumes()?.ElementAtOrDefault(partNo - 1)?.Open()
+                    ?? throw new DriveNotFoundException($"Partition {partNo} not found");
             }
             else
             {
-                throw new NotSupportedException($"Partition {partition} ({partitions![partition - 1].TypeAsString}) in image file '{imageFile}' does not contain a supported file system.");
+                part = vdisks[0].Content;
             }
+
+            disposables.Add(part);
+
+            fileSystem = FileSystemManager.DetectFileSystems(part).FirstOrDefault()?.Open(part);
+
+            if (fileSystem is null)
+            {
+                if (partNo == 0 && vdisks[0].Partitions is not null)
+                {
+                    throw new NotSupportedException("No supported file system detected. Specify a partition using --part switch.");
+                }
+                else if (partNo == 0)
+                {
+                    throw new NotSupportedException("No supported file system detected in image file");
+                }
+                else
+                {
+                    throw new NotSupportedException($"No supported file system detected in partition {partNo}");
+                }
+            }
+
+            disposables.Add(fileSystem);
+        }
+
+        if (wimPath is not null)
+        {
+            Console.WriteLine();
+            Console.WriteLine(wimPath);
+
+            Stream wim = fileSystem is not null
+                ? fileSystem.OpenFile(wimPath, FileMode.Open, FileAccess.Read)
+                : File.OpenRead(wimPath);
+
+            disposables.Add(wim);
+
+            fileSystem = new WimFile(wim).TryGetImage(wimIndex - 1, out var wimfs)
+                ? wimfs
+                : throw new DriveNotFoundException($"Index {wimIndex} not found in WIM file");
+
+            disposables.Add(wimfs);
         }
 
         using var hive = fileSystem is not null
             ? (opMode == OpMode.Add && !fileSystem.FileExists(hiveFile)
-            ? RegistryHive.Create(fileSystem.OpenFile(hiveFile, FileMode.OpenOrCreate, access))
+            ? RegistryHive.Create(fileSystem.OpenFile(hiveFile, FileMode.OpenOrCreate, access), Ownership.Dispose)
             : new RegistryHive(fileSystem.GetFileInfo(hiveFile), access))
             : (opMode == OpMode.Add && !File.Exists(hiveFile)
             ? RegistryHive.Create(hiveFile)
@@ -279,6 +329,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
 
         if (!binaryOutput && key is not null)
         {
+            Console.WriteLine();
             Console.WriteLine($@"\{key.Name}");
         }
 

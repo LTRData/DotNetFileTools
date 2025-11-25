@@ -10,8 +10,7 @@
   <ItemGroup>
     <PackageReference Include="LTRData.Extensions" Version="*" />
     <PackageReference Include="LTRData.DiscUtils.Registry" Version="*" />
-    <PackageReference Include="LTRData.DiscUtils.Containers" Version="*" />
-    <PackageReference Include="LTRData.DiscUtils.FileSystems" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils" Version="*" />
     <PackageReference Include="ArsenalRecon.ImageMounter" Version="*" />
   </ItemGroup>
 
