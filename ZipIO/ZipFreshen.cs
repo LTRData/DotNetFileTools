@@ -141,7 +141,7 @@ write time of the zip file is reset to original timestamp.
                         }
                         else
                         {
-                            WriteConsole(Console.Error, ConsoleColor.Red, $"Cannot find '{Path.Combine(file.FullName, entry.zipEntryFullName)}'");
+                            WriteConsole(Console.Error, ConsoleColor.Red, $"Cannot find '{entry.sourcePath.FullName}'");
                         }
 
                         continue;
