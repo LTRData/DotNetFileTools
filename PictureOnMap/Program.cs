@@ -24,7 +24,7 @@ public static class Program
 
         var result = 0;
 
-        var baseurl = "bingmaps:?cp={lat}~{lon}&lvl=16&collection=point.{lat}_{lon}_{name}";
+        var baseurl = "https://www.google.com/maps/place/{lat},{lon}/@{lat},{lon},16z/";
 
         foreach (var arg in CommandLineParser.ParseCommandLine(args, StringComparer.OrdinalIgnoreCase))
         {
@@ -95,8 +95,11 @@ public static class Program
 #if NETFRAMEWORK
         var asmpath = Assembly.GetExecutingAssembly()?.Location
             ?? throw new InvalidOperationException("Unkown application path");
-#else
+#elif NET6_0_OR_GREATER
         var asmpath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Unkown application path");
+#else
+        var asmpath = Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("Unkown application path");
 #endif
 
@@ -107,8 +110,8 @@ public static class Program
             @"HKEY_CLASSES_ROOT\jpegfile\shell"
         })
         {
-            Registry.SetValue($@"{basekey}\showonmap", null, "Show photo location in Maps app");
-            Registry.SetValue($@"{basekey}\showonmap\command", null, $@"""{asmpath}"" /url=""bingmaps:?cp={{lat}}~{{lon}}&lvl=16&collection=point.{{lat}}_{{lon}}_{{name}}"" ""%L""");
+            Registry.SetValue($@"{basekey}\showonmap", null, "Show photo location in Bing Maps");
+            Registry.SetValue($@"{basekey}\showonmap\command", null, $@"""{asmpath}"" /url=""https://www.bing.com/maps?cp={{lat}}~{{lon}}&sp=point.{{lat}}_{{lon}}"" ""%L""");
             Registry.SetValue($@"{basekey}\showongooglemaps", null, "Show photo location in Google Maps");
             Registry.SetValue($@"{basekey}\showongooglemaps\command", null, $@"""{asmpath}"" /url=""https://www.google.com/maps/place/{{lat}},{{lon}}/@{{lat}},{{lon}},16z/"" ""%L""");
         }
@@ -160,8 +163,13 @@ public static class Program
             }
         }
 
+#if NET6_0_OR_GREATER
+        var exepath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Unknown path to application file");
+#else
         var exepath = Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("Unknown path to application file");
+#endif
 
         var psinfo = new ProcessStartInfo
         {
