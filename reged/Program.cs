@@ -181,7 +181,7 @@ reged --add --hive=filepath --key=keypath [--subkeys] [--value=valuename [--type
 Remove syntax:
 reged --remove --hive=filepath [--key=keypath] [--subkeys] [--value=valuename [--type=valuetype] [data]]
 
-Omitting --key or specifying an empty key name refers to root key in the hive.
+Omitting --key or specifying an empty key name refers to root key in the hive. Note that key paths are specified with backslashes ('\') as separators. Forward slashes ('/') are valid characters in key names and are not parsed as path separators.
 
 Specifying --value without a value name in --query mode refers to the default (unnamed) value for the key.
 
