@@ -157,7 +157,7 @@ public static class Program
             {
                 type = valueType;
             }
-            else if (cmd.Key is "listusers" && cmd.Value.Length == 0
+            else if (cmd.Key == "listusers" && cmd.Value.Length == 0
                 && opMode == OpMode.Query
                 && !cmds.ContainsKey("key") && !cmds.ContainsKey("value") && !cmds.ContainsKey("binary"))
             {
@@ -170,13 +170,17 @@ public static class Program
             else
             {
                 var msg = @"Registry hive editing tool.
-Copyright (c) 2023 - 2025, LTR Data. https://ltr-data.se
+Copyright (c) 2023 - 2026, LTR Data. https://ltr-data.se
 
 Query syntax:
 reged --query --hive=filepath [--key=keypath] [--subkeys] [--value=valuename] [--binary]
 
-Add/update syntax:
-reged --add --hive=filepath --key=keypath [--subkeys] [--value=valuename [--type=valuetype] data | --binary
+Create key syntax:
+reged --add --hive=filepath --key=keypath
+
+Add/update value syntax:
+reged --add --hive=filepath --key=keypath [--value=valuename [--type=valuetype]] data
+reged --add --hive=filepath --key=keypath [--value=valuename [--type=valuetype]] --binary
 
 Remove syntax:
 reged --remove --hive=filepath [--key=keypath] [--subkeys] [--value=valuename [--type=valuetype] [data]]

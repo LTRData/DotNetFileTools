@@ -135,7 +135,7 @@ public static class Program
             else
             {
                 Console.WriteLine(@"peinfo - Show EXE, DLL, ELF etc header information
-Copyright (c) 2025 - LTR Data, Olof Lagerkvist
+Copyright (c) 2025 - 2026 Olof Lagerkvist, LTR Data
 https://ltr-data.se
 
 Syntax:
