@@ -17,6 +17,8 @@ namespace netcheck;
 
 public static class Program
 {
+    private static readonly Version Version_5_0 = new(5, 0);
+
     public static int Main(params string[] args)
     {
         try
@@ -215,7 +217,8 @@ public static class Program
         var sep = target_framework.IndexOf(",Version=v", StringComparison.Ordinal);
         var fx = target_framework.Remove(sep).TrimStart('.').ToLowerInvariant();
         var ver = target_framework.Substring(sep + ",Version=v".Length);
-        if (fx == "netcoreapp" && ver[0] >= '5')
+        
+        if (fx == "netcoreapp" && Version.Parse(ver) >= Version_5_0)
         {
             fx = "net";
         }
