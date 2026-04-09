@@ -164,12 +164,12 @@ Aborting...");
                         {
                             Console.ForegroundColor = ConsoleColor.Magenta;
                             Console.WriteLine(@$"
-Found {diffBlocks} blocks where checksums are different from existing meta file");
+Found {diffBlocks:N0} blocks where checksums are different from existing meta file");
                         }
                         else
                         {
                             Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine(@$"
+                            Console.WriteLine(@"
 All blocks have matching checksums in existing meta file");
                         }
 
@@ -257,7 +257,7 @@ All blocks have matching checksums in existing meta file");
         }
 
         Console.WriteLine(@$"
-Diff at position {position}
+Diff at position {position:N0}
 ");
 
         diffBlocks++;
@@ -288,8 +288,8 @@ Diff at position {position}
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine(@$"
 Source and target meta files do not respresent the same image file size.
-Indicated size of source image: {sourceMetafile.LongLength / HashSize * BlockSize}
-Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSize}
+Indicated size of source image: {sourceMetafile.LongLength / HashSize * BlockSize:N0}
+Indicated size of target image: {targetMetafile.LongLength / HashSize * BlockSize:N0}
 
 If source size has changed, target size should also be changed to the exact
 same size and target meta file regenerated before any --copy or --check
@@ -332,7 +332,7 @@ operation.");
 
         var totalSize = new FileInfo(source).Length;
 
-        Console.WriteLine($"Total allocated image size {totalSize} ({SizeFormatting.FormatBytes(totalSize)}), {diffBytes} bytes ({SizeFormatting.FormatBytes(diffBytes)}) to update, {100d * diffBytes / totalSize:0.0}% modified.");
+        Console.WriteLine($"Total allocated image size {totalSize:N0} ({SizeFormatting.FormatBytes(totalSize)}), {diffBytes:N0} bytes ({SizeFormatting.FormatBytes(diffBytes)}) to update, {100d * diffBytes / totalSize:0.0}% modified.");
 
         if (dryRun)
         {
@@ -386,7 +386,7 @@ operation.");
 
             if (sourceMetafile.AsSpan(i * HashSize, HashSize)
                 .SequenceEqual(targetMetafile.AsSpan(i * HashSize, HashSize)))
-            {
+            {   
                 continue;
             }
 
@@ -436,7 +436,7 @@ operation.");
         }
 
         Console.WriteLine($@"
-Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes of {diffBytes} ({SizeFormatting.FormatBytes(diffBytes)}) expected. Flushing target...");
+Finished, copied {copiedBytes:N0} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes of {diffBytes:N0} ({SizeFormatting.FormatBytes(diffBytes)}) expected. Flushing target...");
 
         var flushTargetTask = targetStream.FlushAsync(cancellationToken);
 
@@ -455,7 +455,7 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         var sourceAllocatedSize = new FileInfo(source).Length;
 
-        Console.WriteLine($"Total allocated image size {sourceAllocatedSize} ({SizeFormatting.FormatBytes(sourceAllocatedSize)}).");
+        Console.WriteLine($"Total allocated image size {sourceAllocatedSize:N0} ({SizeFormatting.FormatBytes(sourceAllocatedSize)}).");
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -491,8 +491,8 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 Source image file does not respresent the same virtual disk size as indicated
 by target meta file.
 
-Virtual disk size of source image: {sourceSize}
-Virtual disk size of target image: {targetSize}
+Virtual disk size of source image: {sourceSize:N0}
+Virtual disk size of target image: {targetSize:N0}
 
 If source size has changed, target size should also be changed to the exact
 same size and target meta file regenerated before any --copy or --check
@@ -545,7 +545,7 @@ operation.");
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            Console.Write($"Writing position {position}\r");
+            Console.Write($"Writing position {position:N0}\r");
 
             lock (targetStream)
             {
@@ -557,7 +557,7 @@ operation.");
         }
 
         Console.WriteLine($@"
-Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes. Flushing target...");
+Finished, copied {copiedBytes:N0} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes. Flushing target...");
 
         var flushTargetTask = targetStream.FlushAsync(cancellationToken);
 
@@ -597,7 +597,7 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
 
         var parallelCount = Math.Max(Environment.ProcessorCount / 2, 1);
 
-        Console.WriteLine($"Using {parallelCount} threads x {BlockSize} bytes block size.");
+        Console.WriteLine($"Using {parallelCount} threads x {BlockSize:N0} bytes block size.");
 
         var buffer = new byte[BlockSize * parallelCount];
 
@@ -623,14 +623,14 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
                 {
                     var timeLeft = stopwatch.Elapsed * ((double)(sizeTotal - position) / position);
                     var finishTime = DateTime.Now + timeLeft;
-                    Console.Write($"Reading position {position} of {sizeTotal}, {100d * position / sizeTotal:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
+                    Console.Write($"Reading position {position:N0} of {sizeTotal:N0}, {100d * position / sizeTotal:0.0}% done, estimated finish time {finishTime:yyyy-MM-dd HH:mm}...\r");
                     messageUpdateTime = Environment.TickCount64;
                 }
             }
             else
             {
                 stopwatch.Start();
-                Console.Write($"Reading position {position} of {sizeTotal}, {100d * position / sizeTotal:0.0}% done...\r");
+                Console.Write($"Reading position {position:N0} of {sizeTotal:N0}, {100d * position / sizeTotal:0.0}% done...\r");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -670,7 +670,7 @@ Finished, copied {copiedBytes} ({SizeFormatting.FormatBytes(copiedBytes)}) bytes
             cancellationToken.ThrowIfCancellationRequested();
 
             Console.WriteLine($@"
-Finished at {stream.Position} of {sizeTotal}, {100d * stream.Position / sizeTotal:0.0}%. Flushing output...");
+Finished at {stream.Position:N0} of {sizeTotal:N0}, {100d * stream.Position / sizeTotal:0.0}%. Flushing output...");
 
             metafile.Write(checksums, 0, checksums.Length);
         }
@@ -680,7 +680,7 @@ Finished at {stream.Position} of {sizeTotal}, {100d * stream.Position / sizeTota
 
     private static int ShowHelp()
     {
-        Console.WriteLine(@$"Disk image block based backup tool, version 1.0
+        Console.WriteLine(@"Disk image block based backup tool, version 1.0
 Copyright (c) Olof Lagerkvist, LTR Data, 2023 - 2026
 
 This backup tool uses lists of block checksums for virtual machine disk image
