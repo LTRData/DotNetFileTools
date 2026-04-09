@@ -1,10 +1,16 @@
-﻿using LTRData.Extensions.CommandLine;
+﻿using LTRData.Extensions.Buffers;
+using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
 using LTRData.Geodesy.Positions;
 using LTRLib.Imaging;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+#if NET45_OR_GREATER || NETCOREAPP || NETSTANDARD
+using System.Net.Http;
+#endif
 using System.Windows.Media.Imaging;
 
 namespace picmetadump;
@@ -24,28 +30,34 @@ public static class Program
 
         Console.WriteLine("Image Path;Date Taken;Latitude;Longitude;Camera Manufacturer;Camera Model");
 
-        foreach (var image_path in cmds[""]
+        foreach (var path in cmds[""]
             .SelectMany(path =>
             {
+                if (path.Contains("://"))
+                {
+                    return SingleValueEnumerable.Get(path);
+                }
+
                 var dir = Path.GetDirectoryName(path) is { Length: > 0 } d ? d : ".";
                 var file = Path.GetFileName(path);
 
-#if NET40_OR_GREATER || !NETFRAMEWORK
+#if NET40_OR_GREATER || NETCOREAPP || NETSTANDARD
                 return Directory.EnumerateFiles(dir, file);
 #else
-                return Directory.GetFiles(dir, file);
+                return (IEnumerable<string>)Directory.GetFiles(dir, file);
 #endif
             }))
         {
             try
             {
-                using var file = File.OpenRead(image_path);
+                using Stream pic = path.Contains("://") && Uri.TryCreate(path, UriKind.Absolute, out var uri)
+                    ? DownloadData(uri) : File.OpenRead(path);
 
-                var frame = BitmapFrame.Create(file);
+                var frame = BitmapFrame.Create(pic);
 
                 if (frame.Metadata is not BitmapMetadata metaData)
                 {
-                    Console.Error.WriteLine($"Image {image_path} contains no metadata");
+                    Console.Error.WriteLine($"Image {path} contains no metadata");
                     continue;
                 }
 
@@ -56,12 +68,30 @@ public static class Program
                     location = null;
                 }
 
-                Console.WriteLine($"{image_path};{date};{location?.LatitudeToString(LatLonPosition.GeoFormat.Degrees)};{location?.LongitudeToString(LatLonPosition.GeoFormat.Degrees)};{metaData.CameraManufacturer};{metaData.CameraModel}");
+                Console.WriteLine($"{path};{date};{location?.LatitudeToString(LatLonPosition.GeoFormat.Degrees)};{location?.LongitudeToString(LatLonPosition.GeoFormat.Degrees)};{metaData.CameraManufacturer};{metaData.CameraModel}");
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error processing image {image_path}: {ex.JoinMessages()}");
+                Console.Error.WriteLine($"Error processing image {path}: {ex.JoinMessages()}");
             }
         }
     }
+
+#if NET45_OR_GREATER || NETCOREAPP || NETSTANDARD
+    private static Stream DownloadData(Uri uri)
+    {
+        var client = new HttpClient();
+        var response = client.GetAsync(uri).GetAwaiter().GetResult();
+        response.EnsureSuccessStatusCode();
+
+        return response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+    }
+#else
+    private static MemoryStream DownloadData(Uri uri)
+    {
+        var client = new WebClient();
+        var response = client.DownloadData(uri);
+        return new(response);
+    }
+#endif
 }
