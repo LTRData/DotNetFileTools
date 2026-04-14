@@ -1,17 +1,13 @@
 ﻿using LTRData.Extensions.Buffers;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
-using LTRData.Geodesy.Positions;
-using LTRLib.Imaging;
+using MetadataExtractor;
+using MetadataExtractor.Formats.Exif;
 using System;
-using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Net;
-#if NET45_OR_GREATER || NETCOREAPP || NETSTANDARD
 using System.Net.Http;
-#endif
-using System.Windows.Media.Imaging;
 
 namespace picmetadump;
 
@@ -42,9 +38,9 @@ public static class Program
                 var file = Path.GetFileName(path);
 
 #if NET40_OR_GREATER || NETCOREAPP || NETSTANDARD
-                return Directory.EnumerateFiles(dir, file);
+                return System.IO.Directory.EnumerateFiles(dir, file);
 #else
-                return (IEnumerable<string>)Directory.GetFiles(dir, file);
+                return (IEnumerable<string>)System.IO.Directory.GetFiles(dir, file);
 #endif
             }))
         {
@@ -53,22 +49,29 @@ public static class Program
                 using Stream pic = path.Contains("://") && Uri.TryCreate(path, UriKind.Absolute, out var uri)
                     ? DownloadData(uri) : File.OpenRead(path);
 
-                var frame = BitmapFrame.Create(pic);
+                var directories = ImageMetadataReader.ReadMetadata(pic, path);
 
-                if (frame.Metadata is not BitmapMetadata metaData)
+                var subIfd = directories.OfType<ExifSubIfdDirectory>().FirstOrDefault();
+
+                DateTime? date = null;
+
+                if (subIfd is not null && subIfd.TryGetDateTime(ExifDirectoryBase.TagDateTimeOriginal, out var dt))
                 {
-                    Console.Error.WriteLine($"Image {path} contains no metadata");
-                    continue;
+                    date = dt;
                 }
 
-                var date = metaData.DateTaken;
+                var gps = directories.OfType<GpsDirectory>().FirstOrDefault();
 
-                if (!metaData.TryGetGeoLocation(out var location))
+                GeoLocation? location = null;
+
+                if (gps is not null && gps.TryGetGeoLocation(out var loc))
                 {
-                    location = null;
+                    location = loc;
                 }
 
-                Console.WriteLine($"{path};{date};{location?.LatitudeToString(LatLonPosition.GeoFormat.Degrees)};{location?.LongitudeToString(LatLonPosition.GeoFormat.Degrees)};{metaData.CameraManufacturer};{metaData.CameraModel}");
+                var ifd0 = directories.OfType<ExifIfd0Directory>().FirstOrDefault();
+
+                Console.WriteLine($"{path};{date};{location?.Latitude.ToString(NumberFormatInfo.InvariantInfo)};{location?.Longitude.ToString(NumberFormatInfo.InvariantInfo)};{ifd0?.GetDescription(ExifDirectoryBase.TagMake)};{ifd0?.GetDescription(ExifDirectoryBase.TagModel)}");
             }
             catch (Exception ex)
             {
@@ -77,7 +80,6 @@ public static class Program
         }
     }
 
-#if NET45_OR_GREATER || NETCOREAPP || NETSTANDARD
     private static Stream DownloadData(Uri uri)
     {
         var client = new HttpClient();
@@ -86,12 +88,4 @@ public static class Program
 
         return response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
     }
-#else
-    private static MemoryStream DownloadData(Uri uri)
-    {
-        var client = new WebClient();
-        var response = client.DownloadData(uri);
-        return new(response);
-    }
-#endif
 }

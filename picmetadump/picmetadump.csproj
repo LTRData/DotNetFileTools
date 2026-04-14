@@ -2,14 +2,18 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net35;net40;net8.0-windows;net9.0-windows;net10.0-windows</TargetFrameworks>
+    <TargetFrameworks>net48;netstandard2.0;netstandard2.1;net8.0;net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
-    <UseWPF>true</UseWPF>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+	<Reference Include="System.Net.Http" />
+  </ItemGroup>
+
   <ItemGroup>
-	<PackageReference Include="LTRLib.Windows" Version="*" />
+	<PackageReference Include="LTRData.Extensions" Version="*" />
+	<PackageReference Include="LTRData.Geodesy" Version="*" />
+	<PackageReference Include="MetadataExtractor" Version="*" />
   </ItemGroup>
   
 </Project>
