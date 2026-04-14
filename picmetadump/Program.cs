@@ -71,7 +71,7 @@ public static class Program
 
                 var ifd0 = directories.OfType<ExifIfd0Directory>().FirstOrDefault();
 
-                Console.WriteLine($"{path};{date};{location?.Latitude.ToString(NumberFormatInfo.InvariantInfo)};{location?.Longitude.ToString(NumberFormatInfo.InvariantInfo)};{ifd0?.GetDescription(ExifDirectoryBase.TagMake)};{ifd0?.GetDescription(ExifDirectoryBase.TagModel)}");
+                Console.WriteLine($"{path};{date};{location?.Latitude.ToString("N7", NumberFormatInfo.InvariantInfo)};{location?.Longitude.ToString("N7", NumberFormatInfo.InvariantInfo)};{ifd0?.GetDescription(ExifDirectoryBase.TagMake)};{ifd0?.GetDescription(ExifDirectoryBase.TagModel)}");
             }
             catch (Exception ex)
             {
