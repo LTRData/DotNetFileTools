@@ -51,6 +51,7 @@ public static class Program
         var partNo = 0;
         string? wimPath = null;
         var wimIndex = 1;
+        var offset = 0L;
         string[] files = [];
         string? apiSetFile = null;
         var searchOption = SearchOption.TopDirectoryOnly;
@@ -122,6 +123,12 @@ public static class Program
             {
                 ApiSetResolver.Default = ApiSetResolver.Empty;
             }
+            else if (cmd.Key == "offset"
+                && cmd.Value.Length == 1
+                && long.TryParse(cmd.Value[0], out offset)
+                && offset >= 0)
+            {
+            }
             else if (cmd.Key is "r" or "recurse"
                 && cmd.Value.Length == 0)
             {
@@ -158,6 +165,8 @@ Image files:
 Options:
     --recurse               Recurse into subdirectories.
     -r
+
+    --offset=offset         Specify offset in file to analyze from, instead of the start of the file.
 
     --nohdr                 Do not display header information for ELF or PE files.
     -q
@@ -339,6 +348,17 @@ Options:
 
                 Console.WriteLine();
                 Console.WriteLine(path);
+
+                if (offset > 0)
+                {
+                    if (offset >= file.Length)
+                    {
+                        Console.WriteLine($"Specified offset {offset} is beyond end of file.");
+                        continue;
+                    }
+
+                    file.Position = offset;
+                }
 
                 ProcessFile(file,
                             path,
