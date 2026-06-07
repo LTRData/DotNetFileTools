@@ -132,6 +132,24 @@ public static class PEViewer
                 Console.WriteLine($"{"Type",-24}Executable");
             }
 
+            if (reader.PEHeaders.SectionHeaders is { IsDefaultOrEmpty: false } sectionHeaders)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Sections:");
+
+                foreach (var dir in reader.PEHeaders.SectionHeaders.Where(dir => dir.VirtualAddress != -1))
+                {
+                    if (dir.SizeOfRawData > 0)
+                    {
+                        Console.WriteLine($"0x{dir.VirtualAddress,-11:x8} {dir.Name,-9} {dir.VirtualSize:N0} bytes (raw {dir.SizeOfRawData:N0} bytes)");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"0x{dir.VirtualAddress,-11:x8} {dir.Name,-9} {dir.VirtualSize:N0} bytes");
+                    }
+                }
+            }
+
             try
             {
                 if (NativeFileVersion.TryGetVersion(fileData, out var fileVersion))
@@ -167,266 +185,268 @@ public static class PEViewer
             }
         }
 
-        if (reader.PEHeaders.PEHeader is { } peHeader)
+        if (reader.PEHeaders.PEHeader is not { } peHeader)
         {
-            if (!options.HasFlag(Options.SuppressHeaders))
+            return;
+        }
+
+        if (!options.HasFlag(Options.SuppressHeaders))
+        {
+            Console.WriteLine();
+            Console.WriteLine("PE optional header:");
+            Console.WriteLine($"{"Magic",-24}{peHeader.Magic}");
+            Console.WriteLine($"{"Subsystem",-24}{peHeader.Subsystem}");
+            Console.WriteLine($"{"Entry point",-24}0x{peHeader.AddressOfEntryPoint:x8}");
+            Console.WriteLine($"{"Image base",-24}0x{peHeader.ImageBase:x8}");
+            Console.WriteLine($"{"Size of image",-24}{peHeader.SizeOfImage:N0} bytes");
+            Console.WriteLine($"{"Size of headers",-24}{peHeader.SizeOfHeaders:N0} bytes");
+            Console.WriteLine($"{"Base of code",-24}0x{peHeader.BaseOfCode:x8}");
+            Console.WriteLine($"{"Base of data",-24}0x{peHeader.BaseOfData:x8}");
+            Console.WriteLine($"{"Characteristics",-24}{peHeader.DllCharacteristics}");
+            Console.WriteLine($"{"Linker version",-24}{peHeader.MajorLinkerVersion}.{peHeader.MinorLinkerVersion}");
+            Console.WriteLine($"{"OS version",-24}{peHeader.MajorOperatingSystemVersion}.{peHeader.MinorOperatingSystemVersion}");
+            Console.WriteLine($"{"Subsystem version",-24}{peHeader.MajorSubsystemVersion}.{peHeader.MinorSubsystemVersion}");
+
+            var securitySectionLocation = peHeader.CertificateTableDirectory;
+
+            if (securitySectionLocation.Size > 0)
             {
                 Console.WriteLine();
-                Console.WriteLine("PE optional header:");
-                Console.WriteLine($"{"Magic",-24}{peHeader.Magic}");
-                Console.WriteLine($"{"Subsystem",-24}{peHeader.Subsystem}");
-                Console.WriteLine($"{"Entry point",-24}0x{peHeader.AddressOfEntryPoint:x8}");
-                Console.WriteLine($"{"Image base",-24}0x{peHeader.ImageBase:x8}");
-                Console.WriteLine($"{"Size of image",-24}{peHeader.SizeOfImage:N0} bytes");
-                Console.WriteLine($"{"Size of headers",-24}{peHeader.SizeOfHeaders:N0} bytes");
-                Console.WriteLine($"{"Base of code",-24}0x{peHeader.BaseOfCode:x8}");
-                Console.WriteLine($"{"Base of data",-24}0x{peHeader.BaseOfData:x8}");
-                Console.WriteLine($"{"Characteristics",-24}{peHeader.DllCharacteristics}");
-                Console.WriteLine($"{"Linker version",-24}{peHeader.MajorLinkerVersion}.{peHeader.MinorLinkerVersion}");
-                Console.WriteLine($"{"OS version",-24}{peHeader.MajorOperatingSystemVersion}.{peHeader.MinorOperatingSystemVersion}");
-                Console.WriteLine($"{"Subsystem version",-24}{peHeader.MajorSubsystemVersion}.{peHeader.MinorSubsystemVersion}");
+                Console.WriteLine("Authenticode signature:");
 
-                var securitySectionLocation = peHeader.CertificateTableDirectory;
+                var securitySection = fileData.AsSpan(securitySectionLocation.RelativeVirtualAddress, securitySectionLocation.Size);
 
-                if (securitySectionLocation.Size > 0)
+                ref readonly var header = ref securitySection.CastRef<NativePE.WinCertificateHeader>();
+
+                if (header.Revision == 0x200 && header.CertificateType == NativePE.CertificateType.PkcsSignedData)
                 {
-                    Console.WriteLine();
-                    Console.WriteLine("Authenticode signature:");
+                    var blob = NativePE.GetCertificateBlob(securitySection);
 
-                    var securitySection = fileData.AsSpan(securitySectionLocation.RelativeVirtualAddress, securitySectionLocation.Size);
-
-                    ref readonly var header = ref securitySection.CastRef<NativePE.WinCertificateHeader>();
-
-                    if (header.Revision == 0x200 && header.CertificateType == NativePE.CertificateType.PkcsSignedData)
-                    {
-                        var blob = NativePE.GetCertificateBlob(securitySection);
-
-                        var signed = new SignedCms();
+                    var signed = new SignedCms();
 
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-                        signed.Decode(blob);
+                    signed.Decode(blob);
 #else
                     signed.Decode(blob.ToArray());
 #endif
 
-                        for (; ; )
+                    for (; ; )
+                    {
+                        var signerInfo = signed.SignerInfos[0];
+
+                        if (signerInfo.Certificate is not { } cert)
                         {
-                            var signerInfo = signed.SignerInfos[0];
-
-                            if (signerInfo.Certificate is not { } cert)
-                            {
-                                break;
-                            }
-
-                            var certSubjectName = cert.Subject;
-
-                            Console.WriteLine($"{"Signed by",-24}{certSubjectName} ({cert.Thumbprint})");
-
-                            if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
-                                || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))
-                                || NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)))
-                            {
-                                Console.ForegroundColor = ConsoleColor.Green;
-                                Console.WriteLine($"File signature is valid.");
-                                Console.ResetColor();
-                            }
-                            else
-                            {
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine($"File signature is not valid. File contents modified after signing.");
-                                Console.ResetColor();
-                            }
-
-                            try
-                            {
-                                signed.CheckSignature(verifySignatureOnly: true);
-                                Console.ForegroundColor = ConsoleColor.Green;
-                                Console.WriteLine($"Certificate signature valid.");
-                                Console.ResetColor();
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine($"Certificate signature error: {ex.JoinMessages()}");
-                                Console.ResetColor();
-                            }
-
-                            using var chain = new X509Chain();
-                            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.IgnoreCtlNotTimeValid | X509VerificationFlags.IgnoreNotTimeNested;
-
-                            if (chain.Build(cert))
-                            {
-                                Console.ForegroundColor = ConsoleColor.Green;
-                                Console.WriteLine($"Certificate is valid.");
-                                Console.ResetColor();
-                            }
-                            else
-                            {
-                                foreach (var certChainStatus in chain.ChainStatus)
-                                {
-                                    Console.ForegroundColor = ConsoleColor.Red;
-                                    Console.WriteLine($"Certificate validation error: {certChainStatus.Status}: {certChainStatus.StatusInformation}");
-                                    Console.ResetColor();
-                                }
-                            }
-
-                            if (signerInfo.UnsignedAttributes
-                                .OfType<CryptographicAttributeObject>()
-                                .Where(o => o.Oid.Value!.StartsWith("1.3.6.1.4.1.311.2.4.", StringComparison.Ordinal))
-                                .SelectMany(o => o.Values.OfType<AsnEncodedData>())
-                                .Select(o => o.RawData)
-                                .FirstOrDefault() is not { } subData)
-                            {
-                                break;
-                            }
-
-                            signed.Decode(subData);
+                            break;
                         }
-                    }
-                    else
-                    {
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine($"Unsupported authenticode signature");
-                        Console.ResetColor();
+
+                        var certSubjectName = cert.Subject;
+
+                        Console.WriteLine($"{"Signed by",-24}{certSubjectName} ({cert.Thumbprint})");
+
+                        if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
+                            || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))
+                            || NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)))
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"File signature is valid.");
+                            Console.ResetColor();
+                        }
+                        else
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"File signature is not valid. File contents modified after signing.");
+                            Console.ResetColor();
+                        }
+
+                        try
+                        {
+                            signed.CheckSignature(verifySignatureOnly: true);
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"Certificate signature valid.");
+                            Console.ResetColor();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine($"Certificate signature error: {ex.JoinMessages()}");
+                            Console.ResetColor();
+                        }
+
+                        using var chain = new X509Chain();
+                        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.IgnoreNotTimeValid | X509VerificationFlags.IgnoreCtlNotTimeValid | X509VerificationFlags.IgnoreNotTimeNested;
+
+                        if (chain.Build(cert))
+                        {
+                            Console.ForegroundColor = ConsoleColor.Green;
+                            Console.WriteLine($"Certificate is valid.");
+                            Console.ResetColor();
+                        }
+                        else
+                        {
+                            foreach (var certChainStatus in chain.ChainStatus)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine($"Certificate validation error: {certChainStatus.Status}: {certChainStatus.StatusInformation}");
+                                Console.ResetColor();
+                            }
+                        }
+
+                        if (signerInfo.UnsignedAttributes
+                            .OfType<CryptographicAttributeObject>()
+                            .Where(o => o.Oid.Value!.StartsWith("1.3.6.1.4.1.311.2.4.", StringComparison.Ordinal))
+                            .SelectMany(o => o.Values.OfType<AsnEncodedData>())
+                            .Select(o => o.RawData)
+                            .FirstOrDefault() is not { } subData)
+                        {
+                            break;
+                        }
+
+                        signed.Decode(subData);
                     }
                 }
-            }
-
-            if ((options & (Options.ShowDependencies | Options.ShowDependencyTree)) != 0)
-            {
-                ProcessDependencyTree(fileData, fileExistsFunc, readAllBytesFunc, filePath, options);
-            }
-
-            if (options.HasFlag(Options.ShowImports))
-            {
-                var importSection = peHeader.ImportTableDirectory;
-
-                if (importSection.Size > 0
-                    && reader.PEHeaders.TryGetDirectoryOffset(importSection, out var importSectionAddress))
+                else
                 {
-                    Console.WriteLine();
-                    Console.WriteLine("Imported DLLs:");
-
-                    var descriptors = MemoryMarshal.Cast<byte, ImageImportDescriptor>(fileData.AsSpan(importSectionAddress, importSection.Size));
-
-                    ProcessImportTable(reader, descriptors);
-                }
-            }
-
-            if (options.HasFlag(Options.IncludeDelayedImports))
-            {
-                var delayImportSection = peHeader.DelayImportTableDirectory;
-
-                if (delayImportSection.Size > 0
-                    && reader.PEHeaders.TryGetDirectoryOffset(delayImportSection, out var delayImportSectionAddress))
-                {
-                    Console.WriteLine();
-                    Console.WriteLine("Delay Imported DLLs:");
-
-                    var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
-
-                    ProcessDelayImportTable(reader, descriptors);
-                }
-            }
-
-            if ((options & (Options.ShowExports | Options.ShowImports)) != 0)
-            {
-                var exportSection = peHeader.ExportTableDirectory;
-
-                if (exportSection.Size > 0
-                    && reader.PEHeaders.TryGetDirectoryOffset(exportSection, out var exportSectionAddress))
-                {
-                    Console.WriteLine();
-
-                    if (options.HasFlag(Options.ShowExports))
-                    {
-                        Console.WriteLine("Exported functions:");
-                    }
-                    else
-                    {
-                        Console.WriteLine("Forwarded functions:");
-                    }
-
-                    ref readonly var exportDir = ref fileData.AsSpan(exportSectionAddress, exportSection.Size).CastRef<ImageExportDirectory>();
-
-                    var moduleName = reader.GetSectionData((int)exportDir.Name).AsSpan().ReadNullTerminatedAsciiString();
-
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.Write("  ");
-                    Console.WriteLine(moduleName);
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"Unsupported authenticode signature");
                     Console.ResetColor();
+                }
+            }
+        }
 
-                    if (exportDir.NumberOfNames != 0)
+        if ((options & (Options.ShowDependencies | Options.ShowDependencyTree)) != 0)
+        {
+            ProcessDependencyTree(fileData, fileExistsFunc, readAllBytesFunc, filePath, options);
+        }
+
+        if (options.HasFlag(Options.ShowImports))
+        {
+            var importSection = peHeader.ImportTableDirectory;
+
+            if (importSection.Size > 0
+                && reader.PEHeaders.TryGetDirectoryOffset(importSection, out var importSectionAddress))
+            {
+                Console.WriteLine();
+                Console.WriteLine("Imported DLLs:");
+
+                var descriptors = MemoryMarshal.Cast<byte, ImageImportDescriptor>(fileData.AsSpan(importSectionAddress, importSection.Size));
+
+                ProcessImportTable(reader, descriptors);
+            }
+        }
+
+        if (options.HasFlag(Options.IncludeDelayedImports))
+        {
+            var delayImportSection = peHeader.DelayImportTableDirectory;
+
+            if (delayImportSection.Size > 0
+                && reader.PEHeaders.TryGetDirectoryOffset(delayImportSection, out var delayImportSectionAddress))
+            {
+                Console.WriteLine();
+                Console.WriteLine("Delay Imported DLLs:");
+
+                var descriptors = MemoryMarshal.Cast<byte, ImageDelayImportDescriptor>(fileData.AsSpan(delayImportSectionAddress, delayImportSection.Size));
+
+                ProcessDelayImportTable(reader, descriptors);
+            }
+        }
+
+        if ((options & (Options.ShowExports | Options.ShowImports)) != 0)
+        {
+            var exportSection = peHeader.ExportTableDirectory;
+
+            if (exportSection.Size > 0
+                && reader.PEHeaders.TryGetDirectoryOffset(exportSection, out var exportSectionAddress))
+            {
+                Console.WriteLine();
+
+                if (options.HasFlag(Options.ShowExports))
+                {
+                    Console.WriteLine("Exported functions:");
+                }
+                else
+                {
+                    Console.WriteLine("Forwarded functions:");
+                }
+
+                ref readonly var exportDir = ref fileData.AsSpan(exportSectionAddress, exportSection.Size).CastRef<ImageExportDirectory>();
+
+                var moduleName = reader.GetSectionData((int)exportDir.Name).AsSpan().ReadNullTerminatedAsciiString();
+
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write("  ");
+                Console.WriteLine(moduleName);
+                Console.ResetColor();
+
+                if (exportDir.NumberOfNames != 0)
+                {
+                    var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
+                    var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan()).Slice(0, exportDir.NumberOfNames);
+                    var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+
+                    for (var i = 0; i < exportDir.NumberOfNames; i++)
                     {
-                        var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                        var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                        var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+                        var nameRVA = namePointers[i];
+                        var name = reader.GetSectionData((int)nameRVA).AsSpan().ReadNullTerminatedAsciiString();
+                        var ordinal = ordinalPointers[i];
+                        var functionRVA = functionPointers[ordinal];
 
-                        for (var i = 0; i < exportDir.NumberOfNames; i++)
+                        if (functionRVA >= exportSection.RelativeVirtualAddress && functionRVA < exportSection.RelativeVirtualAddress + exportSection.Size)
                         {
-                            var nameRVA = namePointers[i];
-                            var name = reader.GetSectionData((int)nameRVA).AsSpan().ReadNullTerminatedAsciiString();
-                            var ordinal = ordinalPointers[i];
-                            var functionRVA = functionPointers[ordinal];
+                            // Forwarder
+                            var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
 
-                            if (functionRVA >= exportSection.RelativeVirtualAddress && functionRVA < exportSection.RelativeVirtualAddress + exportSection.Size)
+                            var delimiter = forwarderString.LastIndexOf('.');
+
+                            var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
+
+                            if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
                             {
-                                // Forwarder
-                                var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
-
-                                var delimiter = forwarderString.LastIndexOf('.');
-
-                                var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
-
-                                if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
-                                {
-                                    forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString.Substring(delimiter + 1)}";
-                                }
-
-                                Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, Forwarded to: {forwarderString})  {name}");
-
-                                continue;
+                                forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString.Substring(delimiter + 1)}";
                             }
 
-                            if (options.HasFlag(Options.ShowExports))
-                            {
-                                Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, RVA: 0x{functionRVA:X8})  {name}");
-                            }
+                            Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, Forwarded to: {forwarderString})  {name}");
+
+                            continue;
+                        }
+
+                        if (options.HasFlag(Options.ShowExports))
+                        {
+                            Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, RVA: 0x{functionRVA:X8})  {name}");
                         }
                     }
+                }
 
-                    if (exportDir.NumberOfFunctions != 0)
+                if (exportDir.NumberOfFunctions != 0)
+                {
+                    var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+
+                    for (var i = 0; i < exportDir.NumberOfFunctions; i++)
                     {
-                        var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+                        var functionRVA = functionPointers[i];
 
-                        for (var i = 0; i < exportDir.NumberOfFunctions; i++)
+                        if (functionRVA >= exportSection.RelativeVirtualAddress && functionRVA < exportSection.RelativeVirtualAddress + exportSection.Size)
                         {
-                            var functionRVA = functionPointers[i];
+                            // Forwarder
+                            var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
 
-                            if (functionRVA >= exportSection.RelativeVirtualAddress && functionRVA < exportSection.RelativeVirtualAddress + exportSection.Size)
+                            var delimiter = forwarderString.LastIndexOf('.');
+
+                            var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
+
+                            if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
                             {
-                                // Forwarder
-                                var forwarderString = reader.GetSectionData(functionRVA).AsSpan().ReadNullTerminatedAsciiString();
-
-                                var delimiter = forwarderString.LastIndexOf('.');
-
-                                var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
-
-                                if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
-                                {
-                                    forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString.Substring(delimiter + 1)}";
-                                }
-
-                                Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, Forwarded to: {forwarderString})");
-
-                                continue;
+                                forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString.Substring(delimiter + 1)}";
                             }
 
-                            if (options.HasFlag(Options.ShowExports))
-                            {
-                                Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, RVA: 0x{functionRVA:X8})");
-                            }
+                            Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, Forwarded to: {forwarderString})");
+
+                            continue;
+                        }
+
+                        if (options.HasFlag(Options.ShowExports))
+                        {
+                            Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, RVA: 0x{functionRVA:X8})");
                         }
                     }
                 }
