@@ -240,7 +240,10 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
         {
             DiscUtils.Complete.SetupHelper.SetupComplete();
 
-            Console.WriteLine();
+            if (!binaryOutput)
+            {
+                Console.WriteLine();
+            }
 
             if (partNo == 0 && imagePaths.Length != 1)
             {
@@ -253,7 +256,10 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
 
             foreach (var imagePath in imagePaths)
             {
-                Console.WriteLine(imagePath);
+                if (!binaryOutput)
+                {
+                    Console.WriteLine(imagePath);
+                }
 
                 var vdisk = DevioServiceFactory.GetDiscUtilsVirtualDisk(imagePath, access);
 
@@ -304,8 +310,11 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
 
         if (wimPath is not null)
         {
-            Console.WriteLine();
-            Console.WriteLine(wimPath);
+            if (!binaryOutput)
+            {
+                Console.WriteLine();
+                Console.WriteLine(wimPath);
+            }
 
             Stream wim = fileSystem is not null
                 ? fileSystem.OpenFile(wimPath, FileMode.Open, FileAccess.Read)
