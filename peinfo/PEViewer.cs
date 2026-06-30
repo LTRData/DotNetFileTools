@@ -15,7 +15,7 @@ using System.Security.Cryptography.X509Certificates;
 namespace peinfo;
 
 #pragma warning disable IDE0079 // Remove unnecessary suppression
-#pragma warning disable IDE0057 // Use range operator
+
 
 public static class PEViewer
 {
@@ -380,9 +380,9 @@ public static class PEViewer
 
                 if (exportDir.NumberOfNames != 0)
                 {
-                    var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                    var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                    var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+                    var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan())[..exportDir.NumberOfNames];
+                    var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan())[..exportDir.NumberOfNames];
+                    var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan())[..exportDir.NumberOfFunctions];
 
                     for (var i = 0; i < exportDir.NumberOfNames; i++)
                     {
@@ -398,11 +398,11 @@ public static class PEViewer
 
                             var delimiter = forwarderString.LastIndexOf('.');
 
-                            var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
+                            var module = delimiter >= 0 ? forwarderString[..delimiter] : null;
 
                             if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
                             {
-                                forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString.Substring(delimiter + 1)}";
+                                forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString[(delimiter + 1)..]}";
                             }
 
                             Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + ordinal:X4}, Forwarded to: {forwarderString})  {name}");
@@ -419,7 +419,7 @@ public static class PEViewer
 
                 if (exportDir.NumberOfFunctions != 0)
                 {
-                    var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+                    var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan())[..exportDir.NumberOfFunctions];
 
                     for (var i = 0; i < exportDir.NumberOfFunctions; i++)
                     {
@@ -432,11 +432,11 @@ public static class PEViewer
 
                             var delimiter = forwarderString.LastIndexOf('.');
 
-                            var module = delimiter >= 0 ? forwarderString.Substring(0, delimiter) : null;
+                            var module = delimiter >= 0 ? forwarderString[..delimiter] : null;
 
                             if (ApiSetResolver.Default.TryLookupApiSet(module, out var apiSetTarget))
                             {
-                                forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString.Substring(delimiter + 1)}";
+                                forwarderString = $"{Path.GetFileNameWithoutExtension(apiSetTarget)}.{forwarderString[(delimiter + 1)..]}";
                             }
 
                             Console.WriteLine($"    (Ordinal: 0x{exportDir.Base + i:X4}, Forwarded to: {forwarderString})");
@@ -649,7 +649,7 @@ public static class PEViewer
     private static void WriteHintAndName(ReadOnlySpan<byte> data)
     {
         var hint = MemoryMarshal.Read<ushort>(data);
-        var name = BufferExtensions.ReadNullTerminatedAsciiString(data.Slice(2));
+        var name = BufferExtensions.ReadNullTerminatedAsciiString(data[2..]);
 
         if (hint == 0)
         {
@@ -1017,8 +1017,8 @@ public static class PEViewer
 
             if (exportDir.NumberOfNames != 0)
             {
-                var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan()).Slice(0, exportDir.NumberOfNames);
+                var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan())[..exportDir.NumberOfNames];
+                var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan())[..exportDir.NumberOfNames];
 
                 for (var i = 0; i < exportDir.NumberOfNames; i++)
                 {
@@ -1032,7 +1032,7 @@ public static class PEViewer
 
             if (exportDir.NumberOfFunctions != 0)
             {
-                var functionPointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+                var functionPointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan())[..exportDir.NumberOfFunctions];
 
                 for (var i = 0; i < exportDir.NumberOfFunctions; i++)
                 {
@@ -1106,7 +1106,7 @@ public static class PEViewer
                         else
                         {
                             var data = reader.GetSectionData((int)func).AsSpan();
-                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data.Slice(2).ReadNullTerminatedAsciiString()));
+                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data[2..].ReadNullTerminatedAsciiString()));
                         }
                     }
                 }
@@ -1128,7 +1128,7 @@ public static class PEViewer
                         else
                         {
                             var data = reader.GetSectionData((int)func).AsSpan();
-                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data.Slice(2).ReadNullTerminatedAsciiString()));
+                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data[2..].ReadNullTerminatedAsciiString()));
                         }
                     }
                 }
@@ -1151,9 +1151,9 @@ public static class PEViewer
 
             if (exportDir.NumberOfNames != 0)
             {
-                var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan()).Slice(0, exportDir.NumberOfNames);
-                var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+                var namePointers = MemoryMarshal.Cast<byte, uint>(reader.GetSectionData(exportDir.AddressOfNames).AsSpan())[..exportDir.NumberOfNames];
+                var ordinalPointers = MemoryMarshal.Cast<byte, ushort>(reader.GetSectionData(exportDir.AddressOfNameOrdinals).AsSpan())[..exportDir.NumberOfNames];
+                var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan())[..exportDir.NumberOfFunctions];
 
                 for (var i = 0; i < exportDir.NumberOfNames; i++)
                 {
@@ -1174,7 +1174,7 @@ public static class PEViewer
 
             if (exportDir.NumberOfFunctions != 0)
             {
-                var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan()).Slice(0, exportDir.NumberOfFunctions);
+                var functionPointers = MemoryMarshal.Cast<byte, int>(reader.GetSectionData(exportDir.AddressOfFunctions).AsSpan())[..exportDir.NumberOfFunctions];
 
                 for (var i = 0; i < exportDir.NumberOfFunctions; i++)
                 {
@@ -1256,7 +1256,7 @@ public static class PEViewer
                         else
                         {
                             var data = reader.GetSectionData(func - addressBase).AsSpan();
-                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data.Slice(2).ReadNullTerminatedAsciiString()));
+                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data[2..].ReadNullTerminatedAsciiString()));
                         }
                     }
                 }
@@ -1278,7 +1278,7 @@ public static class PEViewer
                         else
                         {
                             var data = reader.GetSectionData((int)(func - (ulong)addressBase)).AsSpan();
-                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data.Slice(2).ReadNullTerminatedAsciiString()));
+                            functions.Add((Ordinal: 0, Hint: MemoryMarshal.Read<ushort>(data), Name: data[2..].ReadNullTerminatedAsciiString()));
                         }
                     }
                 }
@@ -1302,7 +1302,7 @@ public static class PEViewer
 
         if (length >= 0)
         {
-            forwarderString = forwarderString.Slice(0, length);
+            forwarderString = forwarderString[..length];
         }
 
         var moduleEndIndex = forwarderString.LastIndexOf((byte)'.');
@@ -1312,9 +1312,9 @@ public static class PEViewer
             return default;
         }
 
-        var forwarderModuleName = forwarderString.Slice(0, moduleEndIndex).ReadNullTerminatedAsciiString();
+        var forwarderModuleName = forwarderString[..moduleEndIndex].ReadNullTerminatedAsciiString();
 
-        var functionName = forwarderString.Slice(moduleEndIndex + 1).ReadNullTerminatedAsciiString();
+        var functionName = forwarderString[(moduleEndIndex + 1)..].ReadNullTerminatedAsciiString();
 
         if (functionName.Length == 0)
         {
@@ -1326,7 +1326,7 @@ public static class PEViewer
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
             if (!ulong.TryParse(functionName.AsSpan(1), out var ordinalValue))
 #else
-            if (!ulong.TryParse(functionName.Substring(1), out var ordinalValue))
+            if (!ulong.TryParse(functionName[1..], out var ordinalValue))
 #endif
             {
                 return default;

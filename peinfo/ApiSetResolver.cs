@@ -13,7 +13,7 @@ using ApiSetDictionary = System.Collections.Frozen.FrozenDictionary<string, stri
 namespace peinfo;
 
 #pragma warning disable IDE0079 // Remove unnecessary suppression
-#pragma warning disable IDE0057 // Use range operator
+
 
 public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
 {
@@ -61,7 +61,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
 
         if (lastDelimited >= 0)
         {
-            moduleNameImport = moduleNameImport.Substring(0, lastDelimited);
+            moduleNameImport = moduleNameImport[..lastDelimited];
         }
 
         return apiSetLookup.TryGetValue(moduleNameImport, out moduleName);
@@ -161,7 +161,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
             offset = Unsafe.SizeOf<ApiSetHeader2>();
             ref readonly var header = ref apisetSection.CastRef<ApiSetHeader2>();
 
-            var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader2>(apisetSection.Slice(offset)).Slice(0, header.Count);
+            var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader2>(apisetSection[offset..])[..header.Count];
 
             for (var i = 0; i < header.Count; i++)
             {
@@ -173,7 +173,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
 
                 if (lastDelimiter > 0)
                 {
-                    name = name.Slice(0, lastDelimiter);
+                    name = name[..lastDelimiter];
                 }
 
 #if NET6_0_OR_GREATER
@@ -182,9 +182,9 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
                 var namespaceName = $"api-{name.ToString()}";
 #endif
 
-                ref readonly var arrayHeader = ref apisetSection.Slice(item.DataOffset).CastRef<ApiSetValueArrayHeader2>();
+                ref readonly var arrayHeader = ref apisetSection[item.DataOffset..].CastRef<ApiSetValueArrayHeader2>();
 
-                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry2>(apisetSection.Slice(item.DataOffset + Unsafe.SizeOf<ApiSetValueArrayHeader2>())).Slice(0, arrayHeader.Count);
+                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry2>(apisetSection[(item.DataOffset + Unsafe.SizeOf<ApiSetValueArrayHeader2>())..])[..arrayHeader.Count];
 
                 for (var j = 0; j < values.Length; j++)
                 {
@@ -204,7 +204,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
             offset = Unsafe.SizeOf<ApiSetHeader3>();
             ref readonly var header = ref apisetSection.CastRef<ApiSetHeader3>();
 
-            var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader3>(apisetSection.Slice(offset)).Slice(0, header.Count);
+            var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader3>(apisetSection[offset..])[..header.Count];
 
             for (var i = 0; i < header.Count; i++)
             {
@@ -216,7 +216,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
 
                 if (lastDelimiter > 0)
                 {
-                    name = name.Slice(0, lastDelimiter);
+                    name = name[..lastDelimiter];
                 }
 
 #if NET6_0_OR_GREATER
@@ -225,9 +225,9 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
                 var namespaceName = $"api-{name.ToString()}";
 #endif
 
-                ref readonly var arrayHeader = ref apisetSection.Slice(item.DataOffset).CastRef<ApiSetValueArrayHeader3>();
+                ref readonly var arrayHeader = ref apisetSection[item.DataOffset..].CastRef<ApiSetValueArrayHeader3>();
 
-                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry3>(apisetSection.Slice(item.DataOffset + Unsafe.SizeOf<ApiSetValueArrayHeader3>())).Slice(0, arrayHeader.Count);
+                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry3>(apisetSection[(item.DataOffset + Unsafe.SizeOf<ApiSetValueArrayHeader3>())..])[..arrayHeader.Count];
 
                 for (var j = 0; j < values.Length; j++)
                 {
@@ -246,7 +246,7 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
         {
             ref readonly var header = ref apisetSection.CastRef<ApiSetHeader6>();
 
-            var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader6>(apisetSection.Slice(header.entryOffset)).Slice(0, header.Count);
+            var array = MemoryMarshal.Cast<byte, ApiSetNamespaceHeader6>(apisetSection[header.entryOffset..])[..header.Count];
 
             for (var i = 0; i < header.Count; i++)
             {
@@ -258,12 +258,12 @@ public class ApiSetResolver(ApiSetDictionary? apiSetLookup)
 
                 if (lastDelimiter > 0)
                 {
-                    name = name.Slice(0, lastDelimiter);
+                    name = name[..lastDelimiter];
                 }
 
                 var namespaceName = name.ToString();
 
-                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry3>(apisetSection.Slice(item.ValOffset)).Slice(0, item.ValueCount);
+                var values = MemoryMarshal.Cast<byte, ApiSetValueEntry3>(apisetSection[item.ValOffset..])[..item.ValueCount];
 
                 for (var j = 0; j < item.ValueCount; j++)
                 {

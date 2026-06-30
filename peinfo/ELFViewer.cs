@@ -66,12 +66,12 @@ public static class ELFViewer
                 for (int off = 0; off + step <= dynSpan.Length; off += step)
                 {
                     long tag = elf.Is64
-                        ? (long)ElfUInt64.Parse(dynSpan.Slice(off), elf.IsLittleEndian)
-                        : (int)ElfUInt32.Parse(dynSpan.Slice(off), elf.IsLittleEndian);
+                        ? (long)ElfUInt64.Parse(dynSpan[off..], elf.IsLittleEndian)
+                        : (int)ElfUInt32.Parse(dynSpan[off..], elf.IsLittleEndian);
 
                     ulong val = elf.Is64
-                        ? ElfUInt64.Parse(dynSpan.Slice(off + 8), elf.IsLittleEndian)
-                        : ElfUInt32.Parse(dynSpan.Slice(off + 4), elf.IsLittleEndian);
+                        ? ElfUInt64.Parse(dynSpan[(off + 8)..], elf.IsLittleEndian)
+                        : ElfUInt32.Parse(dynSpan[(off + 4)..], elf.IsLittleEndian);
 
                     if (tag == 0)
                     {
@@ -117,10 +117,10 @@ public static class ELFViewer
 
                 for (int off = 0; off + step <= dynSpan.Length; off += step)
                 {
-                    long tag = elf.Is64 ? (long)MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off)).Parse(elf.IsLittleEndian)
-                                    : (int)MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off)).Parse(elf.IsLittleEndian);
-                    ulong val = elf.Is64 ? MemoryMarshal.Read<ElfUInt64>(dynSpan.Slice(off + (elf.Is64 ? 8 : 4))).Parse(elf.IsLittleEndian)
-                                     : MemoryMarshal.Read<ElfUInt32>(dynSpan.Slice(off + 4)).Parse(elf.IsLittleEndian);
+                    long tag = elf.Is64 ? (long)MemoryMarshal.Read<ElfUInt64>(dynSpan[off..]).Parse(elf.IsLittleEndian)
+                                    : (int)MemoryMarshal.Read<ElfUInt32>(dynSpan[off..]).Parse(elf.IsLittleEndian);
+                    ulong val = elf.Is64 ? MemoryMarshal.Read<ElfUInt64>(dynSpan[(off + (elf.Is64 ? 8 : 4))..]).Parse(elf.IsLittleEndian)
+                                     : MemoryMarshal.Read<ElfUInt32>(dynSpan[(off + 4)..]).Parse(elf.IsLittleEndian);
 
                     if (tag == 0)
                     {
@@ -160,11 +160,11 @@ public static class ELFViewer
 
                     if (strtabFile >= 0)
                     {
-                        var strtab = fileData.Span.Slice((int)strtabFile);
+                        var strtab = fileData.Span[(int)strtabFile..];
 
-                        string? soName = sonameOff.HasValue ? strtab.Slice((int)sonameOff.Value).ReadNullTerminatedAsciiString() : null;
-                        string? rpath = rpathOff.HasValue ? strtab.Slice((int)rpathOff.Value).ReadNullTerminatedAsciiString() : null;
-                        string? runpath = runpathOff.HasValue ? strtab.Slice((int)runpathOff.Value).ReadNullTerminatedAsciiString() : null;
+                        string? soName = sonameOff.HasValue ? strtab[(int)sonameOff.Value..].ReadNullTerminatedAsciiString() : null;
+                        string? rpath = rpathOff.HasValue ? strtab[(int)rpathOff.Value..].ReadNullTerminatedAsciiString() : null;
+                        string? runpath = runpathOff.HasValue ? strtab[(int)runpathOff.Value..].ReadNullTerminatedAsciiString() : null;
 
                         if ((options & (Options.IncludeDelayedImports | Options.ShowImports | Options.ShowDependencies | Options.ShowDependencyTree)) != 0)
                         {
@@ -188,7 +188,7 @@ public static class ELFViewer
                             // Read needed strings
                             foreach (var off in neededOffsets)
                             {
-                                var needed = strtab.Slice((int)off).ReadNullTerminatedAsciiString();
+                                var needed = strtab[(int)off..].ReadNullTerminatedAsciiString();
                                 Console.WriteLine(needed);
                             }
 
