@@ -15,7 +15,7 @@ using System.Linq;
 namespace reged;
 
 #pragma warning disable IDE0079 // Remove unnecessary suppression
-#pragma warning disable IDE0057 // Use range operator
+
 
 public static class Program
 {
@@ -663,7 +663,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
 
             if (parsedLength != dataString.Length)
             {
-                dataString = parsedDataString.Slice(0, parsedLength).ToString();
+                dataString = parsedDataString[..parsedLength].ToString();
             }
 
             if (type is RegistryValueType.MultiString)
@@ -692,7 +692,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
                 && uint.TryParse(dataString.AsSpan(2), NumberStyles.HexNumber, null, out ui))
 #else
             if (dataString.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                && uint.TryParse(dataString.Substring(2), NumberStyles.HexNumber, null, out ui))
+                && uint.TryParse(dataString[2..], NumberStyles.HexNumber, null, out ui))
 #endif
             {
                 return ui;
@@ -717,7 +717,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
                 && ulong.TryParse(dataString.AsSpan(2), NumberStyles.HexNumber, null, out ui))
 #else
             if (dataString.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                && ulong.TryParse(dataString.Substring(2), NumberStyles.HexNumber, null, out ui))
+                && ulong.TryParse(dataString[2..], NumberStyles.HexNumber, null, out ui))
 #endif
             {
                 return ui;
@@ -731,7 +731,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
 
             if (dataSpan.StartsWith("0x".AsSpan(), StringComparison.OrdinalIgnoreCase))
             {
-                dataSpan = dataSpan.Slice(2);
+                dataSpan = dataSpan[2..];
             }
 
             if ((dataSpan.Length & 1) == 1)
@@ -765,7 +765,7 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
             && uint.TryParse(typeString.AsSpan(2), NumberStyles.HexNumber, null, out result))
 #else
         if (typeString.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-            && uint.TryParse(typeString.Substring(2), NumberStyles.HexNumber, null, out result))
+            && uint.TryParse(typeString[2..], NumberStyles.HexNumber, null, out result))
 #endif
         {
             type = (RegistryValueType)result;
@@ -849,8 +849,8 @@ Where 'partitionnumber' is one-based number of the partition in the image file, 
                 return $@"REG_LINK     : {FormatRegistryString((string)value)}";
 
             case RegistryValueType.MultiString:
-                return $@"REG_MULTI_SZ :
-{string.Join(Environment.NewLine, ((string[])value).Select(v => $@"{"",-28}{FormatRegistryString(v)}"))}";
+                return $@"REG_MULTI_SZ :{string.Concat(((string[])value).Select(v => $@"
+{"",-28}{FormatRegistryString(v)}"))}";
 
             default:
                 if (value is byte[] bytes)
