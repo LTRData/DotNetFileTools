@@ -1,9 +1,5 @@
 ﻿using Arsenal.ImageMounter.Collections;
 using Arsenal.ImageMounter.Devio.Server.Interaction;
-using Aspose.Zip;
-using Aspose.Zip.Cab;
-using Aspose.Zip.SevenZip;
-using Aspose.Zip.Xz;
 using DiscUtils;
 using DiscUtils.Archives;
 using DiscUtils.Compression;
@@ -15,6 +11,9 @@ using LTRData.Extensions.Collections;
 using LTRData.Extensions.CommandLine;
 using LTRData.Extensions.Formatting;
 using LTRData.Extensions.Native;
+using SharpCompress.Archives;
+using SharpCompress.Archives.SevenZip;
+using SharpCompress.Compressors.Xz;
 using System.IO.Compression;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
@@ -410,7 +409,7 @@ Options:
             Console.WriteLine();
             Console.WriteLine("File too small to be a valid PE file or ELF file.");
         }
-        else if (fileData[0] == 'P' && fileData[1] == 'K' && fileData[2] == 0x03 && fileData[3] == 0x04)
+        else if (fileData is [(byte)'P', (byte)'K', 0x03, 0x04, ..])
         {
             Console.WriteLine();
             Console.WriteLine("ZIP archive detected, processing entries...");
@@ -418,12 +417,12 @@ Options:
             ProcessZipFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
-        else if (fileData[0] == 0x37 && fileData[1] == 0x7a && fileData[2] == 0xbc && fileData[3] == 0xaf && fileData[4] == 0x27 && fileData[5] == 0x1c && fileData[6] == 0x00)
+        else if (fileData is [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0x00, ..])
         {
             Console.WriteLine();
             Console.WriteLine("7zip archive detected, processing entries...");
 
-            ProcessArchive(new SevenZipArchive(new MemoryStream(fileData)), filePath, fileExistsFunc, readAllBytesFunc, options);
+            ProcessArchive(SevenZipArchive.Open(new MemoryStream(fileData)), filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
         else if (fileData[0x100] == 0 && fileData.AsSpan(0x101, 5).SequenceEqual("ustar"u8))
@@ -434,14 +433,16 @@ Options:
             ProcessTarFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
+#if false
         else if (fileData.AsSpan(0, 4).SequenceEqual("MSCF"u8) && fileData.AsSpan(4, 4).IsBufferZero())
         {
             Console.WriteLine();
             Console.WriteLine("CAB archive detected, processing entries...");
 
-            ProcessArchive(new CabArchive(new MemoryStream(fileData)), filePath, fileExistsFunc, readAllBytesFunc, options);
+            ProcessArchive(new CabArchive(fileData), filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
+#endif
         else if (fileData.AsSpan(0, 2).SequenceEqual("MZ"u8))
         {
             PEViewer.ProcessMZFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
@@ -474,7 +475,7 @@ Options:
                 return fileData;
             }
 
-            if (fileData[0] == 0x1f && fileData[1] == 0x8b)
+            if (fileData is [0x1f, 0x8b, ..])
             {
                 Console.WriteLine();
                 Console.WriteLine("GZip compressed file detected, decompressing...");
@@ -485,7 +486,7 @@ Options:
                 continue;
             }
 
-            if (fileData[0] == 0x78 && fileData[1] == 0x9c)
+            if (fileData is [0x78, 0x9c, ..])
             {
                 Console.WriteLine();
                 Console.WriteLine("ZLib compressed file detected, decompressing...");
@@ -496,7 +497,7 @@ Options:
                 continue;
             }
 
-            if (fileData[0] == 0x28 && fileData[1] == 0xb5 && fileData[2] == 0x2f && fileData[3] == 0xfd)
+            if (fileData is [0x28, 0xb5, 0x2f, 0xfd, ..])
             {
                 Console.WriteLine();
                 Console.WriteLine("Zstandard compressed file detected, decompressing...");
@@ -507,7 +508,7 @@ Options:
                 continue;
             }
 
-            if (fileData[0] == 0x04 && fileData[1] == 0x22 && fileData[2] == 0x4d && fileData[3] == 0x18)
+            if (fileData is [0x04, 0x22, 0x4d, 0x18, ..])
             {
                 Console.WriteLine();
                 Console.WriteLine("LZ4 compressed file detected, decompressing...");
@@ -534,17 +535,14 @@ Options:
                 Console.WriteLine();
                 Console.WriteLine("XZ compressed file detected, decompressing...");
 
-                using var xz = new XzArchive(new MemoryStream(fileData));
-                var buffer = new byte[((IArchive)xz).FileEntries.First().Length!.Value];
-                using var decompr = new MemoryStream(buffer);
-                xz.Extract(decompr);
+                using var xz = new XZStream(new MemoryStream(fileData));
 
-                fileData = buffer;
+                fileData = xz.ReadToEnd();
 
                 continue;
             }
 
-            if (fileData.AsSpan(0, 4).SequenceEqual("KWAJ"u8) && fileData[4] == 0x88 && fileData[5] == 0xf0 && fileData[6] == 0x27 && fileData[7] == 0xd1)
+            if (fileData.AsSpan(0, 4).SequenceEqual("KWAJ"u8) && fileData.AsSpan(4, 4) is [0x88, 0xf0, 0x27, 0xd1])
             {
                 Console.WriteLine();
                 Console.WriteLine("KWAJ compressed detected, decompressing...");
@@ -552,7 +550,7 @@ Options:
                 fileData = DecompressKwaj(fileData);
             }
 
-            if (fileData.AsSpan(0, 4).SequenceEqual("SZDD"u8) && fileData[4] == 0x88 && fileData[5] == 0xf0 && fileData[6] == 0x27 && fileData[7] == 0x33)
+            if (fileData.AsSpan(0, 4).SequenceEqual("SZDD"u8) && fileData.AsSpan(4, 4) is [0x88, 0xf0, 0x27, 0x33])
             {
                 Console.WriteLine();
                 Console.WriteLine("SZDD compressed detected, decompressing...");
@@ -774,15 +772,15 @@ Options:
                                        Func<string, byte[]> readAllBytesFunc,
                                        Options options)
     {
-        foreach (var entry in archive.FileEntries)
+        foreach (var entry in archive.Entries.Where(entry => !entry.IsDirectory))
         {
             Console.WriteLine();
-            Console.WriteLine(entry.Name);
+            Console.WriteLine(entry.Key);
 
             try
             {
-                using var entryStream = entry.Length is { } length ? new MemoryStream((int)length) : new MemoryStream();
-                entry.Extract(entryStream);
+                using var entryStream = entry.Size is > 0 and <= int.MaxValue ? new MemoryStream((int)entry.Size) : new MemoryStream();
+                entry.WriteTo(entryStream);
 
                 if (entryStream.Length == 0)
                 {

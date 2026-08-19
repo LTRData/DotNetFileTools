@@ -15,6 +15,9 @@ using System.Runtime.Versioning;
 
 namespace netcheck;
 
+#pragma warning disable IDE0079 // Remove unnecessary suppression
+#pragma warning disable IDE0057 // Use range operator
+
 public static class Program
 {
     private static readonly Version Version_5_0 = new(5, 0);

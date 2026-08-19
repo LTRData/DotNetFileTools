@@ -145,7 +145,8 @@ setpkgver [-options] files ...
         }
 
         var repository = Repository.Factory.GetCoreV3("https://api.nuget.org/v3/index.json");
-        var resource = await repository.GetResourceAsync<FindPackageByIdResource>().ConfigureAwait(false);
+        var resource = await repository.GetResourceAsync<FindPackageByIdResource>().ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Could not get NuGet resource");
 
         var files = cmds[""].AsEnumerable();
 

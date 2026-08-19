@@ -16,8 +16,9 @@
     <PackageReference Include="LTRData.DiscUtils.Wim" Version="*" />
     <PackageReference Include="LTRData.DiscUtils" Version="*" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="*" />
-    <PackageReference Include="K4os.Compression.LZ4.Streams" Version="*" />
-    <PackageReference Include="Aspose.Zip" Version="*" />
+	<PackageReference Include="K4os.Compression.LZ4.Streams" Version="*" />
+	<PackageReference Include="SharpCompress" Version="*" />
+	<PackageReference Include="Microsoft.Bcl.Memory" Version="*" />
   </ItemGroup>
   
 </Project>

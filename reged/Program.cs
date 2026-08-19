@@ -16,7 +16,6 @@ namespace reged;
 
 #pragma warning disable IDE0079 // Remove unnecessary suppression
 
-
 public static class Program
 {
     public enum OpMode
