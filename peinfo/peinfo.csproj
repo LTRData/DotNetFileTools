@@ -19,6 +19,7 @@
 	<PackageReference Include="K4os.Compression.LZ4.Streams" Version="*" />
 	<PackageReference Include="SharpCompress" Version="*" />
 	<PackageReference Include="Microsoft.Bcl.Memory" Version="*" />
+	<PackageReference Include="LTRData.Cabinet" Version="*" />
   </ItemGroup>
   
 </Project>

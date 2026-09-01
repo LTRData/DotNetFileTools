@@ -6,6 +6,7 @@ using DiscUtils.Compression;
 using DiscUtils.Streams;
 using DiscUtils.Wim;
 using K4os.Compression.LZ4.Streams;
+using LTRData.Cabinet;
 using LTRData.Extensions.Buffers;
 using LTRData.Extensions.Collections;
 using LTRData.Extensions.CommandLine;
@@ -433,16 +434,14 @@ Options:
             ProcessTarFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
-#if false
         else if (fileData.AsSpan(0, 4).SequenceEqual("MSCF"u8) && fileData.AsSpan(4, 4).IsBufferZero())
         {
             Console.WriteLine();
             Console.WriteLine("CAB archive detected, processing entries...");
 
-            ProcessArchive(new CabArchive(fileData), filePath, fileExistsFunc, readAllBytesFunc, options);
+            ProcessArchive(CabinetArchive.Open(new MemoryStream(fileData)), filePath, fileExistsFunc, readAllBytesFunc, options);
             return;
         }
-#endif
         else if (fileData.AsSpan(0, 2).SequenceEqual("MZ"u8))
         {
             PEViewer.ProcessMZFile(fileData, filePath, fileExistsFunc, readAllBytesFunc, options);
@@ -797,6 +796,51 @@ Options:
                 {
                     entryStream.Position = 0;
                     entryData = entryStream.ReadToEnd();
+                }
+
+                ProcessFile(entryData,
+                            filePath,
+                            fileExistsFunc,
+                            readAllBytesFunc,
+                            options);
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Error.WriteLine(ex.JoinMessages());
+                Console.ResetColor();
+            }
+        }
+    }
+
+    private static void ProcessArchive(CabinetArchive archive,
+                                       string filePath,
+                                       Func<string, bool> fileExistsFunc,
+                                       Func<string, byte[]> readAllBytesFunc,
+                                       Options options)
+    {
+        foreach (var folder in archive.Folders)
+        {
+            
+        }
+
+        foreach (var entry in archive.Files)
+        {
+            Console.WriteLine();
+            Console.WriteLine(entry.Name);
+
+            try
+            {
+                if (entry.Length == 0)
+                {
+                    continue;
+                }
+
+                var entryData = new byte[entry.Length];
+
+                using (var entryStream = entry.Open())
+                {
+                    entryStream.ReadExactly(entryData);
                 }
 
                 ProcessFile(entryData,
