@@ -49,12 +49,12 @@ select the tools and frameworks you need. For example, from the repository root:
 ```sh
 git clone https://github.com/LTRData/DotNetFileTools.git
 cd DotNetFileTools
-dotnet build checksum/checksum.csproj -c Release -p:TargetFrameworks=net10.0
+dotnet build checksum/checksum.csproj -c Release -f net10.0
 dotnet Release/net10.0/checksum.dll -a:SHA256 sample.bin
 ```
 
-Setting `TargetFrameworks` to a single target limits both restore and build to
-that framework. [Directory.Build.props](Directory.Build.props) places build
+The `-f` option selects the framework to build.
+[Directory.Build.props](Directory.Build.props) places build
 outputs in the shared root `Debug/` or `Release/` directory, with framework
 subdirectories.
 
@@ -71,7 +71,7 @@ in this repository, so the complete test suite needs those external fixtures.
 The registry parsing test can be selected independently:
 
 ```sh
-dotnet test TestProject/TestProject.csproj -c Release -p:TargetFrameworks=net10.0 --filter FullyQualifiedName~TestProject.reged
+dotnet test TestProject/TestProject.csproj -c Release -f net10.0 --filter FullyQualifiedName~TestProject.reged
 ```
 
 ## Usage examples
