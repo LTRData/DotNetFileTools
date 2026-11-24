@@ -9,17 +9,25 @@
     <LangVersion>preview</LangVersion>
   </PropertyGroup>
 
+  <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net11.0'))">
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="*" />
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="*" />
+  </ItemGroup>
+
+  <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net11.0'))">
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.*" />
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="10.*" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="LTRData.Extensions" Version="*" />
     <PackageReference Include="ArsenalRecon.ImageMounter" Version="*" />
     <PackageReference Include="System.Reflection.Metadata" Version="*" Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))" />
     <PackageReference Include="LTRData.DiscUtils.Wim" Version="*" />
     <PackageReference Include="LTRData.DiscUtils" Version="*" />
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="*" />
-	<PackageReference Include="K4os.Compression.LZ4.Streams" Version="*" />
-	<PackageReference Include="SharpCompress" Version="*" />
-	<PackageReference Include="Microsoft.Bcl.Memory" Version="*" />
-	<PackageReference Include="LTRData.Cabinet" Version="*" />
+    <PackageReference Include="K4os.Compression.LZ4.Streams" Version="*" />
+    <PackageReference Include="SharpCompress" Version="*" />
+    <PackageReference Include="LTRData.Cabinet" Version="*" />
   </ItemGroup>
   
 </Project>
