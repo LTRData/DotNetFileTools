@@ -243,12 +243,16 @@ public static class PEViewer
 
                         Console.WriteLine($"{"Signed by",-24}{certSubjectName} ({cert.Thumbprint})");
 
-                        if (NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32))
-                            || NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20))
-                            || NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)))
+                        var fileSignature =
+                            NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32)) ? signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 32)
+                            : NativePE.GetRawFileAuthenticodeHash(SHA1.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20)) ? signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 20)
+                            : NativePE.GetRawFileAuthenticodeHash(MD5.Create, fileData, fileData.Length).AsSpan().SequenceEqual(signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)) ? signed.ContentInfo.Content.AsSpan(signed.ContentInfo.Content.Length - 16)
+                            : null;
+
+                        if (!fileSignature.IsEmpty)
                         {
                             Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine($"File signature is valid.");
+                            Console.WriteLine($"File signature is valid: {fileSignature.ToHexString()}");
                             Console.ResetColor();
                         }
                         else
@@ -311,6 +315,12 @@ public static class PEViewer
                     Console.WriteLine($"Unsupported authenticode signature");
                     Console.ResetColor();
                 }
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.WriteLine("No authenticode signature found.");
+                Console.WriteLine($"File hash for signing: {NativePE.GetRawFileAuthenticodeHash(SHA256.Create, fileData, fileData.Length).ToHexString()}");
             }
         }
 
